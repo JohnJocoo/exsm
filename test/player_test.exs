@@ -80,6 +80,8 @@ defmodule EXSM.PlayerTest do
 
     def enter_stopped(_state, _event), do: :ok
     def leave_stopped(_state, _event), do: :ok
+
+    IO.inspect(@states)
   end
 
   test "greets the world" do

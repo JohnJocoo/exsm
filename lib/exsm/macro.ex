@@ -7,6 +7,17 @@ defmodule EXSM.Macro do
   defstruct [:state, :on_enter, :on_leave]
 
   def from_keyword(name, keyword) do
+    has_duplicate_keys =
+      Enum.group_by(keyword, &elem(&1, 0), &elem(&1, 1))
+      |> Enum.any?(fn {_, elements} -> length(elements) > 1 end)
+
+    if has_duplicate_keys do
+      raise """
+      state #{name} has duplicate attributes
+      #{inspect(Enum.map(keyword, &elem(&1, 0)))}
+      """
+    end
+
     %Macro{
       state: %State{
         name: name,
