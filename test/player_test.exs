@@ -21,15 +21,16 @@ defmodule EXSM.PlayerTest do
     use EXSM
 
     state :stopped do
+      initial false
       describe "Playback was stopped"
-      on_enter enter_stopped/2
-      on_leave leave_stopped/2
+      #on_enter PlayerSM.enter_stopped/2
+      #on_leave PlayerSM.leave_stopped/2
     end
 
     state :empty do
-      @initial
+      initial true
       describe "No cd, also initial state"
-      on_enter fn(state, _event) -> Player.start_detecting() end
+      on_enter fn(_state, _event) -> Player.start_detecting() end
     end
 
     state :playing do
@@ -40,6 +41,8 @@ defmodule EXSM.PlayerTest do
     state :open do
       describe "Drawer is open"
     end
+
+    state :paused
 
     transitions do
       :empty <- {:cd_detected, disk, _} = event >>> :stopped when Player.good_disk?(disk)
@@ -75,8 +78,8 @@ defmodule EXSM.PlayerTest do
         end
     end
 
-    defp enter_stopped(state, _event), do: :ok
-    defp leave_stopped(state, _event), do: :ok
+    def enter_stopped(_state, _event), do: :ok
+    def leave_stopped(_state, _event), do: :ok
   end
 
   test "greets the world" do
