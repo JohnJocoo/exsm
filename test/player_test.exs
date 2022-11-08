@@ -23,8 +23,8 @@ defmodule EXSM.PlayerTest do
     state :stopped do
       initial false
       describe "Playback was stopped"
-      #on_enter PlayerSM.enter_stopped/2
-      #on_leave PlayerSM.leave_stopped/2
+      on_enter &PlayerSM.enter_stopped/2
+      on_leave &PlayerSM.leave_stopped/2
     end
 
     state :empty do
@@ -55,7 +55,7 @@ defmodule EXSM.PlayerTest do
       :stopped <- :stop >>> :stopped
 
       :open <- :open_close >>> :empty
-        action Player.close_drawer/0
+        action &Player.close_drawer/0
 
       :playing <- :stop >>> :stopped
         action do: Player.stop_playback()

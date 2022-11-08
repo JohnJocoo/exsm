@@ -2,11 +2,12 @@ defmodule EXSM.Macro do
   @moduledoc false
 
   alias EXSM.Macro
-  alias EXSM.State
 
-  defstruct [:state, :on_enter, :on_leave]
+  defmodule State do
+    defstruct [:state, :on_enter, :on_leave]
+  end
 
-  def from_keyword(name, keyword) do
+  def state_from_keyword(name, keyword) do
     has_duplicate_keys =
       Enum.group_by(keyword, &elem(&1, 0), &elem(&1, 1))
       |> Enum.any?(fn {_, elements} -> length(elements) > 1 end)
@@ -18,8 +19,8 @@ defmodule EXSM.Macro do
       """
     end
 
-    %Macro{
-      state: %State{
+    %Macro.State{
+      state: %EXSM.State{
         name: name,
         description: Keyword.get(keyword, :description),
         initial?: Keyword.get(keyword, :initial?, false)
@@ -29,13 +30,32 @@ defmodule EXSM.Macro do
     }
   end
 
-  def assert_in_block(module, attribute, block_name, current_scope) do
+  def transition_right_expression_to_keyword(expression, state_from) do
+    []
+  end
+
+  def transition_ast_from_keyword(nil) do
+    quote do
+    end
+  end
+
+  def transition_ast_from_keyword([]) do
+    quote do
+    end
+  end
+
+  def transition_ast_from_keyword(keyword) do
+    quote do
+    end
+  end
+
+  def assert_in_block(module, attribute, block_name, current_function) do
     if not Module.has_attribute?(module, attribute) do
       raise """
-      #{current_scope} can only be defined within #{block_name} block"
+      #{current_function} can only be defined within #{block_name} block"
       Example:
       #{block_name} do
-        #{current_scope} ...
+        #{current_function} ...
       end
       """
     end

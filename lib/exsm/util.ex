@@ -7,8 +7,8 @@ defmodule EXSM.Util do
       raise """
       #{context} should be a function of arity 0 or 2
       Examples:
-      #{context}: MyModule.on_enter_my_state/2
-      #{context}: MyModule.on_enter_my_state/0
+      #{context}: &MyModule.on_enter_my_state/2
+      #{context}: &MyModule.on_enter_my_state/0
       #{context}: fn(state, event) -> ... end
       #{context}: fn -> ... end
       """

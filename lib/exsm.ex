@@ -5,10 +5,11 @@ defmodule EXSM do
 
   defmacro __using__(_opts) do
     quote do
+      alias __MODULE__.EXSMTransitions
+
       import unquote(__MODULE__)
 
       Module.register_attribute(__MODULE__, :states, accumulate: true)
-      Module.register_attribute(__MODULE__, :transitions, accumulate: true)
     end
   end
 
@@ -23,10 +24,10 @@ defmodule EXSM do
 
       Module.put_attribute(__MODULE__, :states,
         {unquote(name),
-          EXSM.Macro.from_keyword(unquote(name),
-                                  Module.get_attribute(__MODULE__, :current_state_keyword))}
+          EXSM.Macro.state_from_keyword(unquote(name),
+            Module.delete_attribute(__MODULE__, :current_state_keyword))
+        }
       )
-      Module.delete_attribute(__MODULE__, :current_state_keyword)
     end
   end
 
@@ -35,14 +36,13 @@ defmodule EXSM do
     quote do
       Module.put_attribute(__MODULE__, :states,
           {unquote(name),
-            EXSM.Macro.from_keyword(unquote(name), [])}
+            EXSM.Macro.state_from_keyword(unquote(name), [])}
       )
     end
   end
 
   defmacro describe(info) do
     IO.inspect({:describe, info})
-
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "describe")
 
@@ -63,7 +63,6 @@ defmodule EXSM do
 
   defmacro on_enter(do: block) do
     IO.inspect({:on_enter, block})
-
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_enter")
 
@@ -77,7 +76,6 @@ defmodule EXSM do
 
   defmacro on_enter(function) do
     IO.inspect({:on_enter, function})
-
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_enter")
 
@@ -91,7 +89,6 @@ defmodule EXSM do
 
   defmacro on_leave(do: block) do
     IO.inspect({:on_leave, block})
-
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_leave")
 
@@ -105,7 +102,6 @@ defmodule EXSM do
 
   defmacro on_leave(function) do
     IO.inspect({:on_leave, function})
-
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_leave")
 
@@ -122,27 +118,54 @@ defmodule EXSM do
   defmacro transitions(do: block) do
     IO.inspect({:transitions, block})
     quote do
+      defmodule EXSMTransitions do
+        Module.register_attribute(__MODULE__, :transitions, accumulate: true)
 
+        unquote(block)
+
+        Module.put_attribute(__MODULE__, :transitions,
+          EXSM.Macro.transition_ast_from_keyword(
+            Module.delete_attribute(__MODULE__, :current_transition_keyword)
+          )
+        )
+
+        IO.inspect(@transitions)
+      end
     end
   end
 
   defmacro state_from <- expression do
     IO.inspect({:from, state_from})
     IO.inspect(expression)
-    quote do
 
+    expression_keyword = EXSM.Macro.transition_right_expression_to_keyword(expression, state_from)
+
+    quote do
+      EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "operator <-")
+
+      Module.put_attribute(__MODULE__, :transitions,
+        EXSM.Macro.transition_ast_from_keyword(
+          Module.delete_attribute(__MODULE__, :current_transition_keyword)
+        )
+      )
+
+      Module.register_attribute(__MODULE__, :current_transition_keyword, accumulate: true)
+      Module.put_attribute(__MODULE__, :current_transition_keyword, {:from, unquote(state_from)})
+      Enum.each(unquote(expression_keyword), fn {key, value} ->
+        Module.put_attribute(__MODULE__, :current_transition_keyword, {key, value})
+      end)
     end
   end
 
   defmacro action(do: expression) do
-    IO.inspect(expression)
+    IO.inspect({:action, expression})
     quote do
 
     end
   end
 
   defmacro action(function) do
-    IO.inspect(function)
+    IO.inspect({:action, function})
     quote do
 
     end
