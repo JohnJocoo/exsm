@@ -16,7 +16,6 @@ defmodule EXSM do
   ### State definition macros
 
   defmacro state(name, do: block) do
-    IO.inspect({:state, name, block})
     quote do
       Module.register_attribute(__MODULE__, :current_state_keyword, accumulate: true)
 
@@ -32,7 +31,6 @@ defmodule EXSM do
   end
 
   defmacro state(name) do
-    IO.inspect({:state, name})
     quote do
       Module.put_attribute(__MODULE__, :states,
           {unquote(name),
@@ -116,18 +114,15 @@ defmodule EXSM do
   ### Transition table definition macros
 
   defmacro transitions(do: block) do
-    IO.inspect({:transitions, block})
     quote do
       defmodule EXSMTransitions do
+        import unquote(__MODULE__)
+
         Module.register_attribute(__MODULE__, :transitions, accumulate: true)
 
         unquote(block)
 
-        Module.put_attribute(__MODULE__, :transitions,
-          EXSM.Macro.transition_ast_from_keyword(
-            Module.delete_attribute(__MODULE__, :current_transition_keyword)
-          )
-        )
+        EXSM._add_transition()
 
         IO.inspect(@transitions)
       end
@@ -138,20 +133,21 @@ defmodule EXSM do
     IO.inspect({:from, state_from})
     IO.inspect(expression)
 
-    expression_keyword = EXSM.Macro.transition_right_expression_to_keyword(expression, state_from)
+    state_from_ast = Elixir.Macro.escape(state_from)
+
+    expression_keyword = EXSM.Macro.transition_to_keyword(expression)
+    IO.inspect(expression_keyword)
+    expression_ast = Elixir.Macro.escape(expression_keyword)
 
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "operator <-")
 
-      Module.put_attribute(__MODULE__, :transitions,
-        EXSM.Macro.transition_ast_from_keyword(
-          Module.delete_attribute(__MODULE__, :current_transition_keyword)
-        )
-      )
+      EXSM._add_transition()
 
       Module.register_attribute(__MODULE__, :current_transition_keyword, accumulate: true)
-      Module.put_attribute(__MODULE__, :current_transition_keyword, {:from, unquote(state_from)})
-      Enum.each(unquote(expression_keyword), fn {key, value} ->
+      Module.put_attribute(__MODULE__, :current_transition_keyword,
+        {:from, unquote(state_from_ast)})
+      Enum.each(unquote(expression_ast), fn {key, value} ->
         Module.put_attribute(__MODULE__, :current_transition_keyword, {key, value})
       end)
     end
@@ -159,15 +155,85 @@ defmodule EXSM do
 
   defmacro action(do: expression) do
     IO.inspect({:action, expression})
-    quote do
 
+    expression_ast = Elixir.Macro.escape(expression)
+
+    quote do
+      Module.put_attribute(__MODULE__, :current_transition_keyword,
+        {:action, true})
+      Module.put_attribute(__MODULE__, :current_transition_keyword,
+        {:action_block, unquote(expression_ast)})
     end
   end
 
   defmacro action(function) do
     IO.inspect({:action, function})
-    quote do
 
+    function_ast = Elixir.Macro.escape(function)
+
+    quote do
+      Module.put_attribute(__MODULE__, :current_transition_keyword,
+        {:action, true})
+      Module.put_attribute(__MODULE__, :current_transition_keyword,
+        {:action_function, unquote(function_ast)})
+    end
+  end
+
+  defmacro _add_transition() do
+    IO.inspect(:_add_transition)
+
+    from_ast = {:unquote, [], [
+      quote do
+        EXSM.Macro.transition_fstate_from_keyword(
+          Module.get_attribute(__MODULE__, :current_transition_keyword)
+        )
+      end
+    ]}
+
+    event_ast = {:unquote, [], [
+      quote do
+        EXSM.Macro.transition_event_from_keyword(
+          Module.get_attribute(__MODULE__, :current_transition_keyword)
+        )
+      end
+    ]}
+
+    when_ast = {:unquote, [], [
+      quote do
+        EXSM.Macro.transition_when_from_keyword(
+          Module.get_attribute(__MODULE__, :current_transition_keyword)
+        )
+      end
+    ]}
+
+    action_ast = {:unquote, [], [
+      quote do
+        EXSM.Macro.transition_action_from_keyword(
+          Module.get_attribute(__MODULE__, :current_transition_keyword),
+          :state,
+          :_exsm_event
+        )
+      end
+    ]}
+
+    IO.inspect({:from_ast, from_ast})
+    IO.inspect({:event_ast, event_ast})
+    IO.inspect({:when_ast, when_ast})
+    IO.inspect({:action_ast, action_ast})
+
+    quote do
+      EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "_add_transaction")
+
+      if Module.has_attribute?(__MODULE__, :current_transition_keyword) do
+        def handle_event(
+              unquote(from_ast),
+              unquote(event_ast) = _exsm_event,
+              state) when unquote(when_ast) do
+          unquote(action_ast)
+        end
+
+        Module.delete_attribute(__MODULE__, :current_transition_keyword)
+      end
     end
   end
 
