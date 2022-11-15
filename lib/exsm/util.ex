@@ -26,6 +26,12 @@ defmodule EXSM.Util do
     end
   end
 
+  def parent_module(module) do
+    Module.split(module)
+    |> Enum.drop(-1)
+    |> Module.concat()
+  end
+
   defp function_arity_0_or_2(function) do
     arity =
       :erlang.fun_info(function)

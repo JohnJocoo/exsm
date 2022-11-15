@@ -3,13 +3,22 @@ defmodule EXSM do
   Documentation for `EXSM`.
   """
 
-  defmacro __using__(_opts) do
+  defmacro __using__(opts) do
+    default_transition_values = [:none, :ignore, :reply, :error]
+    default_transition_policy = Keyword.get(opts, :default_transition, :reply)
+    if not default_transition_policy in default_transition_values do
+      raise """
+      :default_transition can only be one of #{inspect(default_transition_values)}
+      """
+    end
+
     quote do
       alias __MODULE__.EXSMTransitions
 
       import unquote(__MODULE__)
 
       Module.register_attribute(__MODULE__, :states, accumulate: true)
+      Module.put_attribute(__MODULE__, :default_transition_policy, unquote(default_transition_policy))
     end
   end
 
@@ -118,13 +127,14 @@ defmodule EXSM do
       defmodule EXSMTransitions do
         import unquote(__MODULE__)
 
-        Module.register_attribute(__MODULE__, :transitions, accumulate: true)
+        Module.register_attribute(__MODULE__, :transitions, accumulate: false)
 
         unquote(block)
 
-        EXSM._add_transition()
+        EXSM._inject_transition()
+        EXSM._inject_default_transition()
 
-        IO.inspect(@transitions)
+        Module.delete_attribute(__MODULE__, :transitions)
       end
     end
   end
@@ -142,7 +152,7 @@ defmodule EXSM do
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "operator <-")
 
-      EXSM._add_transition()
+      EXSM._inject_transition()
 
       Module.register_attribute(__MODULE__, :current_transition_keyword, accumulate: true)
       Module.put_attribute(__MODULE__, :current_transition_keyword,
@@ -159,6 +169,8 @@ defmodule EXSM do
     expression_ast = Elixir.Macro.escape(expression)
 
     quote do
+      EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "action")
+
       Module.put_attribute(__MODULE__, :current_transition_keyword,
         {:action, true})
       Module.put_attribute(__MODULE__, :current_transition_keyword,
@@ -172,6 +184,8 @@ defmodule EXSM do
     function_ast = Elixir.Macro.escape(function)
 
     quote do
+      EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "action")
+
       Module.put_attribute(__MODULE__, :current_transition_keyword,
         {:action, true})
       Module.put_attribute(__MODULE__, :current_transition_keyword,
@@ -179,7 +193,7 @@ defmodule EXSM do
     end
   end
 
-  defmacro _add_transition() do
+  defmacro _inject_transition() do
     IO.inspect(:_add_transition)
 
     from_ast = {:unquote, [], [
@@ -193,7 +207,8 @@ defmodule EXSM do
     event_ast = {:unquote, [], [
       quote do
         EXSM.Macro.transition_event_from_keyword(
-          Module.get_attribute(__MODULE__, :current_transition_keyword)
+          Module.get_attribute(__MODULE__, :current_transition_keyword),
+          :exsm_event
         )
       end
     ]}
@@ -211,10 +226,12 @@ defmodule EXSM do
         EXSM.Macro.transition_action_from_keyword(
           Module.get_attribute(__MODULE__, :current_transition_keyword),
           :state,
-          :_exsm_event
+          :exsm_event
         )
       end
     ]}
+
+    user_state = {:state, [], nil}
 
     IO.inspect({:from_ast, from_ast})
     IO.inspect({:event_ast, event_ast})
@@ -222,17 +239,36 @@ defmodule EXSM do
     IO.inspect({:action_ast, action_ast})
 
     quote do
-      EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "_add_transaction")
+      EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "_inject_transition")
 
       if Module.has_attribute?(__MODULE__, :current_transition_keyword) do
-        def handle_event(
-              unquote(from_ast),
-              unquote(event_ast) = _exsm_event,
-              state) when unquote(when_ast) do
+        def handle_event(unquote(from_ast), unquote(event_ast), unquote(user_state)) when unquote(when_ast) do
           unquote(action_ast)
         end
 
         Module.delete_attribute(__MODULE__, :current_transition_keyword)
+      end
+    end
+  end
+
+  defmacro _inject_default_transition() do
+    IO.inspect(:_inject_default_transition)
+
+    quote do
+      EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "_inject_default_transition")
+
+      case Module.get_attribute(EXSM.Util.parent_module(__MODULE__), :default_transition_policy) do
+        :ignore ->
+          def handle_event(from, _, state), do: {:noreply, from, state}
+
+        :reply ->
+          def handle_event(from, _, state), do: {:reply, from, :no_transition, state}
+
+        :error ->
+          def handle_event(_, _, _), do: {:error, :no_transition}
+
+        :none ->
+          :ok
       end
     end
   end

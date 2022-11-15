@@ -13,12 +13,14 @@ defmodule EXSM.PlayerTest do
     def show_current_song, do: :ok
 
     def store_cd_info({:cd_detected, _disk, _format}), do: :ok
-    def good_disk?({:disk, readable?}), do: readable?
+    defguard is_good_disk(disk) when is_tuple(disk) and elem(disk, 0) == :disk and elem(disk, 1)
 
   end
 
   defmodule PlayerSM do
     use EXSM
+
+    import Player, only: [is_good_disk: 1]
 
     state :stopped do
       initial false
@@ -45,7 +47,7 @@ defmodule EXSM.PlayerTest do
     state :paused
 
     transitions do
-      :empty <- {:cd_detected, disk, _} = event >>> :stopped when Player.good_disk?(disk)
+      :empty <- {:cd_detected, disk, _} = event >>> :stopped when is_good_disk(disk)
         action do: Player.store_cd_info(event)
 
       :stopped <- :play >>> :playing
@@ -81,7 +83,7 @@ defmodule EXSM.PlayerTest do
     def enter_stopped(_state, _event), do: :ok
     def leave_stopped(_state, _event), do: :ok
 
-    IO.inspect(@states)
+    #IO.inspect(@states)
   end
 
   test "greets the world" do

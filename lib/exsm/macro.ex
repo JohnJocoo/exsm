@@ -2,6 +2,7 @@ defmodule EXSM.Macro do
   @moduledoc false
 
   alias EXSM.Macro
+  alias EXSM.Util
 
   defmodule State do
     defstruct [:state, :on_enter, :on_leave]
@@ -71,40 +72,101 @@ defmodule EXSM.Macro do
     end
   end
 
+  def transition_fstate_from_keyword(nil), do: :_
+
   def transition_fstate_from_keyword(keyword) do
     assert_has_keyword(keyword, :from, "transition", "source_state <- event",
       ":stopped <- :play >>> :playing")
-    from = Keyword.fetch!(keyword, :from)
-    Elixir.Macro.escape(from)
+
+    Keyword.fetch!(keyword, :from)
   end
 
-  def transition_event_from_keyword(keyword) do
+  def transition_event_from_keyword(nil, _), do: :_
+
+  def transition_event_from_keyword(keyword, event_param) do
     assert_has_keyword(keyword, :event, "transition", "source_state <- event",
       ":stopped <- :play >>> :playing")
+
     event = Keyword.fetch!(keyword, :event)
-    Elixir.Macro.escape(event)
+
+    if Keyword.has_key?(keyword, :action_function) do
+      {:=, [], [event, {event_param, [], nil}]}
+    else
+      event
+    end
   end
+
+  def transition_when_from_keyword(nil), do: :false
 
   def transition_when_from_keyword(keyword) do
     if Keyword.has_key?(keyword, :when) do
-      when_expression = Keyword.fetch!(keyword, :when)
-      Elixir.Macro.escape(when_expression)
+      Keyword.fetch!(keyword, :when)
     else
       :true
     end
   end
 
-  def transition_action_from_keyword(keyword, state_param, _event_param) do
+  def transition_action_from_keyword(nil, _, _) do
+    quote do
+      raise """
+      No op transaction should never have been called.
+      Please report this bug to library developers.
+      """
+    end
+  end
 
-#    case action.(state, event) do
-#      :ok -> {:noreply, to, state}
-#      {:noreply, new_state} -> {:noreply, to, new_state}
-#      {:reply, reply} -> {:reply, to, reply, state}
-#      {:reply, reply, new_state} -> {:reply, to, reply, new_state}
-#      {:error, error} -> {:error, error}
-#      error -> {:error, error}
-#    end
-    Elixir.Macro.escape({:noreply, :_ignore, state_param})
+  def transition_action_from_keyword(keyword, user_state_param, event_param) do
+    assert_has_keyword(keyword, :to, "transition", ">>> dest_state",
+      ":stopped <- :play >>> :playing")
+
+    if Keyword.has_key?(keyword, :action) do
+      state_to = Keyword.fetch!(keyword, :to)
+
+      quote do
+        unquote(inject_action(keyword, user_state_param, event_param))
+
+        case _exsm_action_result do
+          :ok ->
+            {:noreply,
+              unquote(state_to),
+              unquote({user_state_param, [], nil})
+            }
+
+          {:noreply, new_state} ->
+            {:noreply,
+              unquote(state_to),
+              new_state
+            }
+
+          {:reply, reply} ->
+            {:reply,
+              unquote(state_to),
+              reply,
+              unquote({user_state_param, [], nil})
+            }
+
+          {:reply, reply, new_state} ->
+            {:reply,
+              unquote(state_to),
+              reply,
+              new_state
+            }
+
+          {:error, error} ->
+            {:error, error}
+
+          error ->
+            {:error, error}
+        end
+      end
+    else
+      quote do
+        {:noreply,
+          unquote(Keyword.fetch!(keyword, :to)),
+          unquote({user_state_param, [], nil})
+        }
+      end
+    end
   end
 
   def assert_in_block(module, attribute, block_name, current_function) do
@@ -136,6 +198,35 @@ defmodule EXSM.Macro do
     Unknown operator or statement #{inspect(op)}
     With args #{inspect(args)}
     """, meta
+  end
+
+  defp inject_action(keyword, user_state_param, event_param) do
+    if Keyword.has_key?(keyword, :action_function) do
+      inject_action_function(keyword, user_state_param, event_param)
+    else
+      inject_action_block(keyword, user_state_param, event_param)
+    end
+  end
+
+  defp inject_action_function(keyword, user_state_param, event_param) do
+    quote do
+      _exsm_action = Util.function_to_arity_2(
+        unquote(Keyword.fetch!(keyword, :action_function))
+      )
+      _exsm_action_result = _exsm_action.(
+        unquote({user_state_param, [], nil}),
+        unquote({event_param, [], nil})
+      )
+    end
+  end
+
+  defp inject_action_block(keyword, _, _) do
+    quote do
+      _exsm_action = fn ->
+        unquote(Keyword.fetch!(keyword, :action_block))
+      end
+      _exsm_action_result = _exsm_action.()
+    end
   end
 
   defp assert_has_keyword(keyword, key, scope, statement, example) do
