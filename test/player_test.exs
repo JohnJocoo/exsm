@@ -82,11 +82,32 @@ defmodule EXSM.PlayerTest do
 
     def enter_stopped(_state, _event), do: :ok
     def leave_stopped(_state, _event), do: :ok
-
-    #IO.inspect(@states)
   end
 
-  test "greets the world" do
-    assert EXSM.hello() == :world
+  test "defines states()" do
+    assert function_exported?(PlayerSM, :states, 0)
+  end
+
+  test "states() return all states" do
+    states = PlayerSM.states()
+    assert is_list(states)
+    assert length(states) == 5
+    assert MapSet.new(states) == MapSet.new([
+             %EXSM.State{name: :stopped,
+                         description: "Playback was stopped",
+                         initial?: false},
+             %EXSM.State{name: :empty,
+                         description: "No cd, also initial state",
+                         initial?: true},
+             %EXSM.State{name: :playing,
+                         description: "Playing a song now",
+                         initial?: false},
+             %EXSM.State{name: :open,
+                         description: "Drawer is open",
+                         initial?: false},
+             %EXSM.State{name: :paused,
+                         description: nil,
+                         initial?: false}
+           ])
   end
 end

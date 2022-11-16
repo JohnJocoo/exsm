@@ -6,7 +6,8 @@ defmodule EXSM do
   defmacro __using__(opts) do
     default_transition_values = [:none, :ignore, :reply, :error]
     default_transition_policy = Keyword.get(opts, :default_transition, :reply)
-    if not default_transition_policy in default_transition_values do
+
+    if default_transition_policy not in default_transition_values do
       raise """
       :default_transition can only be one of #{inspect(default_transition_values)}
       """
@@ -17,8 +18,16 @@ defmodule EXSM do
 
       import unquote(__MODULE__)
 
-      Module.register_attribute(__MODULE__, :states, accumulate: true)
+      Module.register_attribute(__MODULE__, :states, accumulate: true, persist: true)
       Module.put_attribute(__MODULE__, :default_transition_policy, unquote(default_transition_policy))
+
+      @spec states() :: [EXSM.State.t()]
+      def states() do
+        __MODULE__.__info__(:attributes)
+        |> Keyword.get_values(:states)
+        |> List.flatten()
+        |> Enum.map(fn {_, %EXSM.Macro.State{state: %EXSM.State{} = state}} -> state end)
+      end
     end
   end
 
@@ -49,7 +58,6 @@ defmodule EXSM do
   end
 
   defmacro describe(info) do
-    IO.inspect({:describe, info})
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "describe")
 
@@ -69,7 +77,6 @@ defmodule EXSM do
   end
 
   defmacro on_enter(do: block) do
-    IO.inspect({:on_enter, block})
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_enter")
 
@@ -82,7 +89,6 @@ defmodule EXSM do
   end
 
   defmacro on_enter(function) do
-    IO.inspect({:on_enter, function})
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_enter")
 
@@ -95,7 +101,6 @@ defmodule EXSM do
   end
 
   defmacro on_leave(do: block) do
-    IO.inspect({:on_leave, block})
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_leave")
 
@@ -108,7 +113,6 @@ defmodule EXSM do
   end
 
   defmacro on_leave(function) do
-    IO.inspect({:on_leave, function})
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_leave")
 
@@ -140,13 +144,9 @@ defmodule EXSM do
   end
 
   defmacro state_from <- expression do
-    IO.inspect({:from, state_from})
-    IO.inspect(expression)
-
     state_from_ast = Elixir.Macro.escape(state_from)
 
     expression_keyword = EXSM.Macro.transition_to_keyword(expression)
-    IO.inspect(expression_keyword)
     expression_ast = Elixir.Macro.escape(expression_keyword)
 
     quote do
@@ -164,8 +164,6 @@ defmodule EXSM do
   end
 
   defmacro action(do: expression) do
-    IO.inspect({:action, expression})
-
     expression_ast = Elixir.Macro.escape(expression)
 
     quote do
@@ -179,8 +177,6 @@ defmodule EXSM do
   end
 
   defmacro action(function) do
-    IO.inspect({:action, function})
-
     function_ast = Elixir.Macro.escape(function)
 
     quote do
@@ -194,8 +190,6 @@ defmodule EXSM do
   end
 
   defmacro _inject_transition() do
-    IO.inspect(:_add_transition)
-
     from_ast = {:unquote, [], [
       quote do
         EXSM.Macro.transition_fstate_from_keyword(
@@ -233,11 +227,6 @@ defmodule EXSM do
 
     user_state = {:state, [], nil}
 
-    IO.inspect({:from_ast, from_ast})
-    IO.inspect({:event_ast, event_ast})
-    IO.inspect({:when_ast, when_ast})
-    IO.inspect({:action_ast, action_ast})
-
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "_inject_transition")
 
@@ -252,8 +241,6 @@ defmodule EXSM do
   end
 
   defmacro _inject_default_transition() do
-    IO.inspect(:_inject_default_transition)
-
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "_inject_default_transition")
 
@@ -271,18 +258,5 @@ defmodule EXSM do
           :ok
       end
     end
-  end
-
-  @doc """
-  Hello world.
-
-  ## Examples
-
-      iex> EXSM.hello()
-      :world
-
-  """
-  def hello do
-    :world
   end
 end
