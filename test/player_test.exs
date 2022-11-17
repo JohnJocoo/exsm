@@ -1,6 +1,8 @@
 defmodule EXSM.PlayerTest do
   use ExUnit.Case
 
+  alias EXSM.Test.Util
+
   defmodule Player do
 
     def start_payback, do: :ok
@@ -109,5 +111,73 @@ defmodule EXSM.PlayerTest do
                          description: nil,
                          initial?: false}
            ])
+  end
+
+  test "EXSMTransitions ':empty <- {:cd_detected, disk, _} >>> :stopped' go to :stopped on valid disk" do
+    assert :stopped == Util.transit_state(PlayerSM, :empty, {:cd_detected, {:disk, true}, :mp3})
+  end
+
+  test "EXSMTransitions ':empty <- {:cd_detected, disk, _} >>> :stopped' stay on invalid disk" do
+    assert :empty == Util.transit_state(PlayerSM, :empty, {:cd_detected, {:disk, false}, :mp3})
+  end
+
+  test "EXSMTransitions ':empty <- {:cd_detected, disk, _} >>> :stopped' stay on unknown message" do
+    assert :empty == Util.transit_state(PlayerSM, :empty, :unknown)
+  end
+
+  test "EXSMTransitions ':stopped <- :play >>> :playing' go to :playing on :play" do
+    assert :playing == Util.transit_state(PlayerSM, :stopped, :play)
+  end
+
+  test "EXSMTransitions ':stopped <- :open_close >>> :open' go to :open on :open_close" do
+    assert :open == Util.transit_state(PlayerSM, :stopped, :open_close)
+  end
+
+  test "EXSMTransitions ':stopped <- :stop >>> :stopped' stay on :stop" do
+    assert :stopped == Util.transit_state(PlayerSM, :stopped, :stop)
+  end
+
+  test "EXSMTransitions ':stopped <- event >>> to' stay on unknown event" do
+    assert :stopped == Util.transit_state(PlayerSM, :stopped, :unknown)
+  end
+
+  test "EXSMTransitions ':open <- :open_close >>> :empty' go to :empty on :open_close" do
+    assert :empty == Util.transit_state(PlayerSM, :open, :open_close)
+  end
+
+  test "EXSMTransitions ':open <- :open_close >>> :empty' stay on unknown event" do
+    assert :open == Util.transit_state(PlayerSM, :open, :unknown)
+  end
+
+  test "EXSMTransitions ':playing <- :stop >>> :stopped' go to :stopped on :stop" do
+    assert :stopped == Util.transit_state(PlayerSM, :playing, :stop)
+  end
+
+  test "EXSMTransitions ':playing <- :pause >>> :paused' go to :paused on :pause" do
+    assert :paused == Util.transit_state(PlayerSM, :playing, :pause)
+  end
+
+  test "EXSMTransitions ':playing <- :open_close >>> :open' go to :open on :open_close" do
+    assert :open == Util.transit_state(PlayerSM, :playing, :open_close)
+  end
+
+  test "EXSMTransitions ':playing <- event >>> to' stay on unknown event" do
+    assert :playing == Util.transit_state(PlayerSM, :playing, :unknown)
+  end
+
+  test "EXSMTransitions ':paused <- :pause >>> :playing' go to :playing on :pause" do
+    assert :playing == Util.transit_state(PlayerSM, :paused, :pause)
+  end
+
+  test "EXSMTransitions ':paused <- :stop >>> :stopped' go to :stopped on :stop" do
+    assert :stopped == Util.transit_state(PlayerSM, :paused, :stop)
+  end
+
+  test "EXSMTransitions ':paused <- :open_close >>> :open' go to :open on :open_close" do
+    assert :open == Util.transit_state(PlayerSM, :paused, :open_close)
+  end
+
+  test "EXSMTransitions ':paused <- event >>> to' stay on unknown event" do
+    assert :paused == Util.transit_state(PlayerSM, :paused, :unknown)
   end
 end
