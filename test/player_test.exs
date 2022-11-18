@@ -1,28 +1,15 @@
 defmodule EXSM.PlayerTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: false
 
+  import Mock
+
+  alias EXSM.PlayerTest.Player
   alias EXSM.Test.Util
-
-  defmodule Player do
-
-    def start_payback, do: :ok
-    def pause_playback, do: :ok
-    def resume_playback, do: :ok
-    def stop_playback, do: :ok
-    def open_drawer, do: :ok
-    def close_drawer, do: :ok
-    def start_detecting, do: :ok
-    def show_current_song, do: :ok
-
-    def store_cd_info({:cd_detected, _disk, _format}), do: :ok
-    defguard is_good_disk(disk) when is_tuple(disk) and elem(disk, 0) == :disk and elem(disk, 1)
-
-  end
 
   defmodule PlayerSM do
     use EXSM
 
-    import Player, only: [is_good_disk: 1]
+    import EXSM.PlayerTest.Player, only: [is_good_disk: 1]
 
     state :stopped do
       initial false
@@ -53,7 +40,7 @@ defmodule EXSM.PlayerTest do
         action do: Player.store_cd_info(event)
 
       :stopped <- :play >>> :playing
-        action do: Player.start_payback()
+        action do: Player.start_playback()
       :stopped <- :open_close >>> :open
         action do: Player.open_drawer()
       :stopped <- :stop >>> :stopped
@@ -84,6 +71,28 @@ defmodule EXSM.PlayerTest do
 
     def enter_stopped(_state, _event), do: :ok
     def leave_stopped(_state, _event), do: :ok
+  end
+
+  defmacro assert_player_not_called(opts \\ []) do
+    except_functions = Keyword.get(opts, :except, [])
+    functions = [
+      :start_playback,
+      :pause_playback,
+      :resume_playback,
+      :stop_playback,
+      :open_drawer,
+      :close_drawer,
+      :start_detecting,
+      :show_current_song,
+      :store_cd_info
+    ]
+    |> Enum.reject(&(&1 in except_functions))
+    |> Enum.map(fn function ->
+      {:assert_not_called, [import: Mock],
+        [{{:., [], [{:__aliases__, [alias: EXSM.PlayerTest.Player], [:Player]}, function]}, [], [:_]}]}
+    end)
+
+    {:__block__, [], functions}
   end
 
   test "defines states()" do
@@ -179,5 +188,83 @@ defmodule EXSM.PlayerTest do
 
   test "EXSMTransitions ':paused <- event >>> to' stay on unknown event" do
     assert :paused == Util.transit_state(PlayerSM, :paused, :unknown)
+  end
+
+  test_with_mock "EXSMTransitions ':empty <- event >>> :stopped' Player.store_cd_info(event) called",
+       Player, [:passthrough], [] do
+    assert :stopped == Util.transit_state(PlayerSM, :empty, {:cd_detected, {:disk, true}, :mp3})
+    assert_called_exactly(Player.store_cd_info({:cd_detected, {:disk, true}, :mp3}), 1)
+    assert_player_not_called except: [:store_cd_info]
+  end
+
+  test_with_mock "EXSMTransitions ':stopped <- :play >>> :playing' Player.start_playback() called",
+                 Player, [:passthrough], [] do
+    assert :playing == Util.transit_state(PlayerSM, :stopped, :play)
+    assert_called_exactly(Player.start_playback(), 1)
+    assert_player_not_called except: [:start_playback]
+  end
+
+  test_with_mock "EXSMTransitions ':stopped <- :open_close >>> :open' Player.open_drawer() called",
+                 Player, [:passthrough], [] do
+    assert :open == Util.transit_state(PlayerSM, :stopped, :open_close)
+    assert_called_exactly(Player.open_drawer(), 1)
+    assert_player_not_called except: [:open_drawer]
+  end
+
+  test_with_mock "EXSMTransitions ':stopped <- :stop >>> :stopped' nothing is called",
+                 Player, [:passthrough], [] do
+    assert :stopped == Util.transit_state(PlayerSM, :stopped, :stop)
+    assert_player_not_called()
+  end
+
+  test_with_mock "EXSMTransitions ':open <- :open_close >>> :empty' Player.close_drawer() called",
+                 Player, [:passthrough], [] do
+    assert :empty == Util.transit_state(PlayerSM, :open, :open_close)
+    assert_called_exactly(Player.close_drawer(), 1)
+    assert_player_not_called except: [:close_drawer]
+  end
+
+  test_with_mock "EXSMTransitions ':playing <- :stop >>> :stopped' Player.stop_playback() called",
+                 Player, [:passthrough], [] do
+    assert :stopped == Util.transit_state(PlayerSM, :playing, :stop)
+    assert_called_exactly(Player.stop_playback(), 1)
+    assert_player_not_called except: [:stop_playback]
+  end
+
+  test_with_mock "EXSMTransitions ':playing <- :pause >>> :paused' Player.pause_playback() called",
+                 Player, [:passthrough], [] do
+    assert :paused == Util.transit_state(PlayerSM, :playing, :pause)
+    assert_called_exactly(Player.pause_playback(), 1)
+    assert_player_not_called except: [:pause_playback]
+  end
+
+  test_with_mock "EXSMTransitions ':playing <- :open_close >>> :open' stop_playback(), open_drawer() called",
+                 Player, [:passthrough], [] do
+    assert :open == Util.transit_state(PlayerSM, :playing, :open_close)
+    assert_called_exactly(Player.stop_playback(), 1)
+    assert_called_exactly(Player.open_drawer(), 1)
+    assert_player_not_called except: [:stop_playback, :open_drawer]
+  end
+
+  test_with_mock "EXSMTransitions ':paused <- :pause >>> :playing' Player.resume_playback() called",
+                 Player, [:passthrough], [] do
+    assert :playing == Util.transit_state(PlayerSM, :paused, :pause)
+    assert_called_exactly(Player.resume_playback(), 1)
+    assert_player_not_called except: [:resume_playback]
+  end
+
+  test_with_mock "EXSMTransitions ':paused <- :stop >>> :stopped' Player.stop_playback() called",
+                 Player, [:passthrough], [] do
+    assert :stopped == Util.transit_state(PlayerSM, :paused, :stop)
+    assert_called_exactly(Player.stop_playback(), 1)
+    assert_player_not_called except: [:stop_playback]
+  end
+
+  test_with_mock "EXSMTransitions ':paused <- :open_close >>> :open' stop_playback(), open_drawer() called",
+                 Player, [:passthrough], [] do
+    assert :open == Util.transit_state(PlayerSM, :paused, :open_close)
+    assert_called_exactly(Player.stop_playback(), 1)
+    assert_called_exactly(Player.open_drawer(), 1)
+    assert_player_not_called except: [:stop_playback, :open_drawer]
   end
 end
