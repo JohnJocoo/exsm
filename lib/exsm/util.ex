@@ -1,6 +1,14 @@
 defmodule EXSM.Util do
   @moduledoc false
 
+  @type event :: any()
+  @type on_enter_result :: :ok |
+                           {:noreply, EXSM.State.name(), EXSM.State.user_state()} |
+                           {:error, any()}
+  @type on_leave_result :: :ok |
+                           {:noreply, EXSM.State.name(), EXSM.State.user_state()} |
+                           {:error, any()}
+
   def assert_state_function(function, context) do
     if not is_function(function) or
        not function_arity_0_or_2(function) do

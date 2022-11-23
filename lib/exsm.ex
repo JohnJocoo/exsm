@@ -19,14 +19,12 @@ defmodule EXSM do
       import unquote(__MODULE__)
 
       Module.register_attribute(__MODULE__, :states, accumulate: true, persist: true)
+      Module.register_attribute(__MODULE__, :initial_state, persist: true)
       Module.put_attribute(__MODULE__, :default_transition_policy, unquote(default_transition_policy))
 
       @spec states() :: [EXSM.State.t()]
       def states() do
-        __MODULE__.__info__(:attributes)
-        |> Keyword.get_values(:states)
-        |> List.flatten()
-        |> Enum.map(fn {_, %EXSM.Macro.State{state: %EXSM.State{} = state}} -> state end)
+        EXSM.states(__MODULE__)
       end
     end
   end
@@ -45,6 +43,7 @@ defmodule EXSM do
             Module.delete_attribute(__MODULE__, :current_state_keyword))
         }
       )
+      EXSM._put_initial_state()
     end
   end
 
@@ -54,6 +53,7 @@ defmodule EXSM do
           {unquote(name),
             EXSM.Macro.state_from_keyword(unquote(name), [])}
       )
+      EXSM._put_initial_state()
     end
   end
 
@@ -121,6 +121,25 @@ defmodule EXSM do
       Module.put_attribute(__MODULE__, :current_state_keyword, {:on_leave,
         EXSM.Util.function_to_arity_2(unquote(function))}
       )
+    end
+  end
+
+  defmacro _put_initial_state() do
+    quote do
+      if Module.get_attribute(__MODULE__, :states) != nil and
+         Module.get_attribute(__MODULE__, :states) != [] and
+         EXSM.Macro.initial_state?(List.first(Module.get_attribute(__MODULE__, :states))) do
+           if Module.get_attribute(__MODULE__, :initial_state) == nil do
+             Module.put_attribute(__MODULE__, :initial_state,
+               List.first(Module.get_attribute(__MODULE__, :states)))
+           else
+             raise """
+             Only one state can be marked as initial.
+             First state #{Module.get_attribute(__MODULE__, :initial_state)}
+             Second #{List.first(Module.get_attribute(__MODULE__, :states))}
+             """
+           end
+         end
     end
   end
 
@@ -258,5 +277,17 @@ defmodule EXSM do
           :ok
       end
     end
+  end
+
+  @spec states(module()) :: [EXSM.State.t()]
+  def states(module) do
+    module.__info__(:attributes)
+    |> Keyword.get_values(:states)
+    |> List.flatten()
+    |> Enum.map(fn {_, %EXSM.Macro.State{state: %EXSM.State{} = state}} -> state end)
+  end
+
+  def new(module, opts \\ []) do
+    nil
   end
 end

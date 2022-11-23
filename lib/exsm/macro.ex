@@ -5,6 +5,12 @@ defmodule EXSM.Macro do
   alias EXSM.Util
 
   defmodule State do
+
+    @type t :: %__MODULE__{
+                 state: EXSM.State.t(),
+                 on_enter: (EXSM.State.user_state(), EXSM.Util.event() -> EXSM.Util.on_enter_result()),
+                 on_leave: (EXSM.State.user_state(), EXSM.Util.event() -> EXSM.Util.on_leave_result())
+               }
     defstruct [:state, :on_enter, :on_leave]
   end
 
@@ -30,6 +36,10 @@ defmodule EXSM.Macro do
       on_leave: Keyword.get(keyword, :on_leave)
     }
   end
+
+  def initial_state?({_, %Macro.State{state: %EXSM.State{initial?: initial}}}), do: initial
+
+  def initial_state?(_), do: false
 
   def transition_to_keyword(expression) do
     parsed = parse_transition(expression, [])
