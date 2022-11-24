@@ -2,11 +2,9 @@ defmodule EXSM.Util do
   @moduledoc false
 
   @type event :: any()
-  @type on_enter_result :: :ok |
-                           {:noreply, EXSM.State.name(), EXSM.State.user_state()} |
+  @type on_enter_result :: {:noreply, EXSM.State.name(), EXSM.State.user_state()} |
                            {:error, any()}
-  @type on_leave_result :: :ok |
-                           {:noreply, EXSM.State.name(), EXSM.State.user_state()} |
+  @type on_leave_result :: {:noreply, EXSM.State.name(), EXSM.State.user_state()} |
                            {:error, any()}
 
   def assert_state_function(function, context) do

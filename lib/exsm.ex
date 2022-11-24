@@ -131,7 +131,7 @@ defmodule EXSM do
          EXSM.Macro.initial_state?(List.first(Module.get_attribute(__MODULE__, :states))) do
            if Module.get_attribute(__MODULE__, :initial_state) == nil do
              Module.put_attribute(__MODULE__, :initial_state,
-               List.first(Module.get_attribute(__MODULE__, :states)))
+               elem(List.first(Module.get_attribute(__MODULE__, :states)), 1).state)
            else
              raise """
              Only one state can be marked as initial.
@@ -279,6 +279,8 @@ defmodule EXSM do
     end
   end
 
+  ### Public functions
+
   @spec states(module()) :: [EXSM.State.t()]
   def states(module) do
     module.__info__(:attributes)
@@ -287,7 +289,31 @@ defmodule EXSM do
     |> Enum.map(fn {_, %EXSM.Macro.State{state: %EXSM.State{} = state}} -> state end)
   end
 
+  @spec new(module(), Keyword.t()) :: EXSM.StateMachine.t()
   def new(module, opts \\ []) do
-    nil
+    initial_state = get_initial_state(module, opts)
+    EXSM.StateMachine.new(module, initial_state, opts)
+  end
+
+  defp get_initial_state(module, opts) do
+    case Keyword.get(:initial_state) do
+      nil ->
+        %EXSM.State{name: initial_state} =
+          module.__info__(:attributes)
+          |> Keyword.get(:initial_state)
+        if initial_state == nil do
+          raise """
+          Initial state for SM should be provided in options to
+          __MODULE__.new() if there is no initial state declared like:
+          state :empty do
+            initial true
+          end
+          """
+        end
+        initial_state
+
+      initial_state ->
+        initial_state
+    end
   end
 end
