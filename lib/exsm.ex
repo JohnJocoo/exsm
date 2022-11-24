@@ -296,7 +296,7 @@ defmodule EXSM do
   end
 
   defp get_initial_state(module, opts) do
-    case Keyword.get(:initial_state) do
+    case Keyword.get(opts, :initial_state) do
       nil ->
         %EXSM.State{name: initial_state} =
           module.__info__(:attributes)
