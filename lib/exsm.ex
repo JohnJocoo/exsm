@@ -264,17 +264,17 @@ defmodule EXSM do
       EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "_inject_default_transition")
 
       case Module.get_attribute(EXSM.Util.parent_module(__MODULE__), :default_transition_policy) do
-        :ignore ->
-          def handle_event(from, _, state), do: {:noreply, from, state}
-
-        :reply ->
-          def handle_event(from, _, state), do: {:reply, from, :no_transition, state}
-
-        :error ->
-          def handle_event(_, _, _), do: {:error, :no_transition}
-
         :none ->
           :ok
+
+        :ignore ->
+          def handle_event(_, _, _), do: {:no_transition, :ignore}
+
+        :reply ->
+          def handle_event(_, _, _), do: {:no_transition, :reply}
+
+        :error ->
+          def handle_event(_, _, _), do: {:no_transition, :error}
       end
     end
   end

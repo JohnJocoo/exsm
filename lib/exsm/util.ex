@@ -38,6 +38,30 @@ defmodule EXSM.Util do
     |> Module.concat()
   end
 
+  def handle_action(nil, user_state), do: {:noreply, user_state}
+
+  def handle_action(action, user_state) do
+    case action.() do
+      :ok ->
+        {:noreply, user_state}
+
+      {:noreply, new_user_state} ->
+        {:noreply, new_user_state}
+
+      {:reply, reply} ->
+        {:reply, reply, user_state}
+
+      {:reply, reply, new_user_state} ->
+        {:reply, reply, new_user_state}
+
+      {:error, error} ->
+        {:error, error}
+
+      error ->
+        {:error, error}
+    end
+  end
+
   defp function_arity_0_or_2(function) do
     arity =
       :erlang.fun_info(function)

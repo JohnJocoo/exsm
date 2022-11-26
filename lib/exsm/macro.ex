@@ -1,7 +1,6 @@
 defmodule EXSM.Macro do
   @moduledoc false
 
-  alias EXSM.Macro
   alias EXSM.Util
 
   defmodule State do
@@ -26,7 +25,7 @@ defmodule EXSM.Macro do
       """
     end
 
-    %Macro.State{
+    %EXSM.Macro.State{
       state: %EXSM.State{
         name: name,
         description: Keyword.get(keyword, :description),
@@ -37,7 +36,7 @@ defmodule EXSM.Macro do
     }
   end
 
-  def initial_state?({_, %Macro.State{state: %EXSM.State{initial?: initial}}}), do: initial
+  def initial_state?({_, %EXSM.Macro.State{state: %EXSM.State{initial?: initial}}}), do: initial
 
   def initial_state?(_), do: false
 
@@ -116,7 +115,7 @@ defmodule EXSM.Macro do
     end
   end
 
-  def transition_action_from_keyword(nil, _, _) do
+  def transition_action_from_keyword(nil, _, _, _) do
     quote do
       raise """
       No op transaction should never have been called.
@@ -128,53 +127,18 @@ defmodule EXSM.Macro do
   def transition_action_from_keyword(keyword, user_state_param, event_param) do
     assert_has_keyword(keyword, :to, "transition", ">>> dest_state",
       ":stopped <- :play >>> :playing")
+    state_from = Keyword.fetch!(keyword, :from)
+    state_to = Keyword.fetch!(keyword, :to)
 
     if Keyword.has_key?(keyword, :action) do
-      state_to = Keyword.fetch!(keyword, :to)
-
       quote do
         unquote(inject_action(keyword, user_state_param, event_param))
 
-        case _exsm_action_result do
-          :ok ->
-            {:noreply,
-              unquote(state_to),
-              unquote({user_state_param, [], nil})
-            }
-
-          {:noreply, new_state} ->
-            {:noreply,
-              unquote(state_to),
-              new_state
-            }
-
-          {:reply, reply} ->
-            {:reply,
-              unquote(state_to),
-              reply,
-              unquote({user_state_param, [], nil})
-            }
-
-          {:reply, reply, new_state} ->
-            {:reply,
-              unquote(state_to),
-              reply,
-              new_state
-            }
-
-          {:error, error} ->
-            {:error, error}
-
-          error ->
-            {:error, error}
-        end
+        {:transition, {unquote(state_from), unquote(state_to), _exsm_action}}
       end
     else
       quote do
-        {:noreply,
-          unquote(Keyword.fetch!(keyword, :to)),
-          unquote({user_state_param, [], nil})
-        }
+        {:transition, {unquote(state_from), unquote(state_to), nil}}
       end
     end
   end
@@ -214,28 +178,29 @@ defmodule EXSM.Macro do
     if Keyword.has_key?(keyword, :action_function) do
       inject_action_function(keyword, user_state_param, event_param)
     else
-      inject_action_block(keyword, user_state_param, event_param)
+      inject_action_block(keyword)
     end
   end
 
   defp inject_action_function(keyword, user_state_param, event_param) do
     quote do
-      _exsm_action = Util.function_to_arity_2(
-        unquote(Keyword.fetch!(keyword, :action_function))
-      )
-      _exsm_action_result = _exsm_action.(
-        unquote({user_state_param, [], nil}),
-        unquote({event_param, [], nil})
-      )
+      _exsm_action = fn ->
+        _function = Util.function_to_arity_2(
+          unquote(Keyword.fetch!(keyword, :action_function))
+        )
+        _function.(
+          unquote({user_state_param, [], nil}),
+          unquote({event_param, [], nil})
+        )
+       end
     end
   end
 
-  defp inject_action_block(keyword, _, _) do
+  defp inject_action_block(keyword) do
     quote do
       _exsm_action = fn ->
         unquote(Keyword.fetch!(keyword, :action_block))
       end
-      _exsm_action_result = _exsm_action.()
     end
   end
 
