@@ -135,8 +135,8 @@ defmodule EXSM do
            else
              raise """
              Only one state can be marked as initial.
-             First state #{Module.get_attribute(__MODULE__, :initial_state)}
-             Second #{List.first(Module.get_attribute(__MODULE__, :states))}
+             First state #{inspect(Module.get_attribute(__MODULE__, :initial_state))}
+             Second #{inspect(elem(List.first(Module.get_attribute(__MODULE__, :states)), 1).state)}
              """
            end
          end
@@ -289,16 +289,24 @@ defmodule EXSM do
     |> Enum.map(fn {_, %EXSM.Macro.State{state: %EXSM.State{} = state}} -> state end)
   end
 
-  @spec new(module(), Keyword.t()) :: EXSM.StateMachine.t()
+  @spec new(module(), Keyword.t()) :: EXSM.StateMachine.t() | {:error, any()}
   def new(module, opts \\ []) do
-    initial_state = get_initial_state(module, opts)
-    EXSM.StateMachine.new(module, initial_state, opts)
+    initial_state = %EXSM.State{name: initial_state_name} = get_initial_state(module, opts)
+    state_machine = EXSM.StateMachine.new(module, initial_state, opts)
+    case enter_state(state_meta_by_name(module, initial_state_name),
+           EXSM.StateMachine.user_state(state_machine)) do
+      {:noreply, user_state} ->
+        EXSM.StateMachine.update_user_state(state_machine, user_state)
+
+      {:error, _} = error ->
+        error
+    end
   end
 
   defp get_initial_state(module, opts) do
     case Keyword.get(opts, :initial_state) do
       nil ->
-        %EXSM.State{name: initial_state} =
+        initial_state =
           module.__info__(:attributes)
           |> Keyword.get(:initial_state)
         if initial_state == nil do
@@ -312,8 +320,41 @@ defmodule EXSM do
         end
         initial_state
 
-      initial_state ->
-        initial_state
+      initial_state_name ->
+        initial_state = state_meta_by_name(module, initial_state_name)
+        if initial_state == nil do
+          raise """
+          No state #{inspect(initial_state_name)} exists
+          for module #{module}
+          """
+        end
+        initial_state.state
     end
+  end
+
+  defp state_meta_by_name(module, name) do
+    module.__info__(:attributes)
+    |> Keyword.get(:states)
+    |> Keyword.get(name)
+  end
+
+  defp enter_state(current_state, user_state, event \\ nil)
+
+  defp enter_state(%EXSM.Macro.State{on_enter: nil}, user_state, _) do
+    {:noreply, user_state}
+  end
+
+  defp enter_state(%EXSM.Macro.State{on_enter: on_enter}, user_state, event) do
+    on_enter.(user_state, event)
+  end
+
+  defp leave_state(current_state, user_state, event \\ nil)
+
+  defp leave_state(%EXSM.Macro.State{on_leave: nil}, user_state, _) do
+    {:noreply, user_state}
+  end
+
+  defp leave_state(%EXSM.Macro.State{on_leave: on_leave}, user_state, event) do
+    on_leave.(user_state, event)
   end
 end

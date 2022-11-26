@@ -8,8 +8,8 @@ defmodule EXSM.Macro do
 
     @type t :: %__MODULE__{
                  state: EXSM.State.t(),
-                 on_enter: (EXSM.State.user_state(), EXSM.Util.event() -> EXSM.Util.on_enter_result()),
-                 on_leave: (EXSM.State.user_state(), EXSM.Util.event() -> EXSM.Util.on_leave_result())
+                 on_enter: (EXSM.State.user_state(), EXSM.Util.event() -> EXSM.Util.on_enter_result()) | nil,
+                 on_leave: (EXSM.State.user_state(), EXSM.Util.event() -> EXSM.Util.on_leave_result()) | nil
                }
     defstruct [:state, :on_enter, :on_leave]
   end
