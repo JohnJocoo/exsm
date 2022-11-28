@@ -19,6 +19,7 @@ defmodule EXSM do
       import unquote(__MODULE__)
 
       Module.register_attribute(__MODULE__, :states, accumulate: true, persist: true)
+      Module.register_attribute(__MODULE__, :states_meta, accumulate: true)
       Module.register_attribute(__MODULE__, :initial_state, persist: true)
       Module.put_attribute(__MODULE__, :default_transition_policy, unquote(default_transition_policy))
 
@@ -37,22 +38,20 @@ defmodule EXSM do
 
       unquote(block)
 
-      Module.put_attribute(__MODULE__, :states,
-        {unquote(name),
-          EXSM.Macro.state_from_keyword(unquote(name),
-            Module.delete_attribute(__MODULE__, :current_state_keyword))
-        }
+      %EXSM.Macro.State{state: state} = state_meta = EXSM.Macro.state_from_keyword(unquote(name),
+        Module.delete_attribute(__MODULE__, :current_state_keyword)
       )
+      Module.put_attribute(__MODULE__, :states_meta, {unquote(name), state_meta})
+      Module.put_attribute(__MODULE__, :states, state)
       EXSM._put_initial_state()
     end
   end
 
   defmacro state(name) do
     quote do
-      Module.put_attribute(__MODULE__, :states,
-          {unquote(name),
-            EXSM.Macro.state_from_keyword(unquote(name), [])}
-      )
+      %EXSM.Macro.State{state: state} = state_meta = EXSM.Macro.state_from_keyword(unquote(name), [])
+      Module.put_attribute(__MODULE__, :states_meta, {unquote(name), state_meta})
+      Module.put_attribute(__MODULE__, :states, state)
       EXSM._put_initial_state()
     end
   end
@@ -77,14 +76,18 @@ defmodule EXSM do
   end
 
   defmacro on_enter(do: block) do
+    function_ast = quote do
+      fn state, event ->
+        _user_state_unused = state
+        _exsm_event_unused = event
+        unquote(block)
+      end
+    end
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_enter")
 
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_enter,
-        fn state, event ->
-          unquote(block)
-        end
-      })
+      on_enter = unquote(Macro.escape(function_ast))
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_enter, on_enter})
     end
   end
 
@@ -94,21 +97,24 @@ defmodule EXSM do
 
       EXSM.Util.assert_state_function(unquote(function), "on_enter")
 
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_enter,
-        EXSM.Util.function_to_arity_2(unquote(function))}
-      )
+      on_enter = EXSM.Util.function_to_arity_2(unquote(function), unquote(Macro.escape(function)))
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_enter, on_enter})
     end
   end
 
   defmacro on_leave(do: block) do
+    function_ast = quote do
+      fn state, event ->
+        _user_state_unused = state
+        _exsm_event_unused = event
+        unquote(block)
+      end
+    end
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_leave")
 
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_leave,
-        fn state, event ->
-          unquote(block)
-        end
-      })
+      on_leave = unquote(Macro.escape(function_ast))
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_leave, on_leave})
     end
   end
 
@@ -118,28 +124,32 @@ defmodule EXSM do
 
       EXSM.Util.assert_state_function(unquote(function), "on_leave")
 
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_leave,
-        EXSM.Util.function_to_arity_2(unquote(function))}
-      )
+      on_leave = EXSM.Util.function_to_arity_2(unquote(function), unquote(Macro.escape(function)))
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_leave, on_leave})
     end
   end
 
   defmacro _put_initial_state() do
     quote do
-      if Module.get_attribute(__MODULE__, :states) != nil and
-         Module.get_attribute(__MODULE__, :states) != [] and
-         EXSM.Macro.initial_state?(List.first(Module.get_attribute(__MODULE__, :states))) do
-           if Module.get_attribute(__MODULE__, :initial_state) == nil do
-             Module.put_attribute(__MODULE__, :initial_state,
-               elem(List.first(Module.get_attribute(__MODULE__, :states)), 1).state)
-           else
-             raise """
-             Only one state can be marked as initial.
-             First state #{inspect(Module.get_attribute(__MODULE__, :initial_state))}
-             Second #{inspect(elem(List.first(Module.get_attribute(__MODULE__, :states)), 1).state)}
-             """
-           end
-         end
+      states = Module.get_attribute(__MODULE__, :states)
+      if  states != nil and states != [] and List.first(states).initial? do
+        initial_state = Module.get_attribute(__MODULE__, :initial_state)
+        if initial_state == nil do
+          Module.put_attribute(__MODULE__, :initial_state, List.first(states))
+        else
+          raise """
+          Only one state can be marked as initial.
+          First state #{inspect(initial_state)}
+          Second #{inspect(List.first(states))}
+          """
+        end
+      end
+    end
+  end
+
+  defmacro _inject_states_meta() do
+    quote do
+
     end
   end
 
@@ -147,6 +157,8 @@ defmodule EXSM do
 
   defmacro transitions(do: block) do
     quote do
+      EXSM._inject_states_meta()
+
       defmodule EXSMTransitions do
         import unquote(__MODULE__)
 
@@ -171,27 +183,31 @@ defmodule EXSM do
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "operator <-")
 
+      states = Module.get_attribute(EXSM.Util.parent_module(__MODULE__), :states_meta)
+      EXSM.Macro.assert_state_exists(unquote(state_from), states)
+
       EXSM._inject_transition()
 
       Module.register_attribute(__MODULE__, :current_transition_keyword, accumulate: true)
-      Module.put_attribute(__MODULE__, :current_transition_keyword,
-        {:from, unquote(state_from_ast)})
+      Module.put_attribute(__MODULE__, :current_transition_keyword, {:from, unquote(state_from_ast)})
       Enum.each(unquote(expression_ast), fn {key, value} ->
+        if key == :to do
+          EXSM.Macro.assert_state_exists(value, states)
+        end
         Module.put_attribute(__MODULE__, :current_transition_keyword, {key, value})
       end)
     end
   end
 
   defmacro action(do: expression) do
+    EXSM.Macro.assert_action_variables(expression)
     expression_ast = Elixir.Macro.escape(expression)
 
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "action")
 
-      Module.put_attribute(__MODULE__, :current_transition_keyword,
-        {:action, true})
-      Module.put_attribute(__MODULE__, :current_transition_keyword,
-        {:action_block, unquote(expression_ast)})
+      Module.put_attribute(__MODULE__, :current_transition_keyword, {:action, true})
+      Module.put_attribute(__MODULE__, :current_transition_keyword, {:action_block, unquote(expression_ast)})
     end
   end
 
@@ -201,10 +217,9 @@ defmodule EXSM do
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "action")
 
-      Module.put_attribute(__MODULE__, :current_transition_keyword,
-        {:action, true})
-      Module.put_attribute(__MODULE__, :current_transition_keyword,
-        {:action_function, unquote(function_ast)})
+      action = EXSM.Util.function_to_arity_2(unquote(function), unquote(function_ast))
+      Module.put_attribute(__MODULE__, :current_transition_keyword, {:action, true})
+      Module.put_attribute(__MODULE__, :current_transition_keyword, {:action_function, action})
     end
   end
 
@@ -286,14 +301,15 @@ defmodule EXSM do
     module.__info__(:attributes)
     |> Keyword.get_values(:states)
     |> List.flatten()
-    |> Enum.map(fn {_, %EXSM.Macro.State{state: %EXSM.State{} = state}} -> state end)
   end
 
   @spec new(module(), Keyword.t()) :: EXSM.StateMachine.t() | {:error, any()}
   def new(module, opts \\ []) do
     initial_state = %EXSM.State{name: initial_state_name} = get_initial_state(module, opts)
     state_machine = EXSM.StateMachine.new(module, initial_state, opts)
-    case enter_state(state_meta_by_name(module, initial_state_name),
+    case EXSM.Util.enter_state(
+           module,
+           initial_state_name,
            EXSM.StateMachine.user_state(state_machine)) do
       {:noreply, user_state} ->
         EXSM.StateMachine.update_user_state(state_machine, user_state)
@@ -321,40 +337,19 @@ defmodule EXSM do
         initial_state
 
       initial_state_name ->
-        initial_state = state_meta_by_name(module, initial_state_name)
+        initial_state =
+          EXSM.states(module)
+          |> Enum.find(fn
+            %EXSM.State{name: ^initial_state_name} -> true
+            _ -> false
+          end)
         if initial_state == nil do
           raise """
           No state #{inspect(initial_state_name)} exists
           for module #{module}
           """
         end
-        initial_state.state
+        initial_state
     end
-  end
-
-  defp state_meta_by_name(module, name) do
-    module.__info__(:attributes)
-    |> Keyword.get(:states)
-    |> Keyword.get(name)
-  end
-
-  defp enter_state(current_state, user_state, event \\ nil)
-
-  defp enter_state(%EXSM.Macro.State{on_enter: nil}, user_state, _) do
-    {:noreply, user_state}
-  end
-
-  defp enter_state(%EXSM.Macro.State{on_enter: on_enter}, user_state, event) do
-    on_enter.(user_state, event)
-  end
-
-  defp leave_state(current_state, user_state, event \\ nil)
-
-  defp leave_state(%EXSM.Macro.State{on_leave: nil}, user_state, _) do
-    {:noreply, user_state}
-  end
-
-  defp leave_state(%EXSM.Macro.State{on_leave: on_leave}, user_state, event) do
-    on_leave.(user_state, event)
   end
 end

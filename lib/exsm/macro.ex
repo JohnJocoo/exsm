@@ -1,14 +1,14 @@
 defmodule EXSM.Macro do
   @moduledoc false
 
-  alias EXSM.Util
+  @type ast :: tuple()
 
   defmodule State do
 
     @type t :: %__MODULE__{
                  state: EXSM.State.t(),
-                 on_enter: (EXSM.State.user_state(), EXSM.Util.event() -> EXSM.Util.on_enter_result()) | nil,
-                 on_leave: (EXSM.State.user_state(), EXSM.Util.event() -> EXSM.Util.on_leave_result()) | nil
+                 on_enter: EXSM.Macro.ast() | nil,
+                 on_leave: EXSM.Macro.ast() | nil
                }
     defstruct [:state, :on_enter, :on_leave]
   end
@@ -35,10 +35,6 @@ defmodule EXSM.Macro do
       on_leave: Keyword.get(keyword, :on_leave)
     }
   end
-
-  def initial_state?({_, %EXSM.Macro.State{state: %EXSM.State{initial?: initial}}}), do: initial
-
-  def initial_state?(_), do: false
 
   def transition_to_keyword(expression) do
     parsed = parse_transition(expression, [])
@@ -138,6 +134,10 @@ defmodule EXSM.Macro do
       end
     else
       quote do
+        unquote({:=, [], [
+          {:_user_state_unused, [], nil},
+          {user_state_param, [], nil}
+        ]})
         {:transition, {unquote(state_from), unquote(state_to), nil}}
       end
     end
@@ -155,11 +155,66 @@ defmodule EXSM.Macro do
     end
   end
 
+  def assert_action_variables(block_ast) do
+    assert_block_variables(
+      block_ast,
+      [:state, :exsm_event, :_user_state_unused, :_exsm_action],
+      [:state],
+      "action"
+    )
+  end
+
+  def assert_guard_variables(block_ast) do
+    assert_block_variables(
+      block_ast,
+      [:state, :exsm_event, :_user_state_unused, :_exsm_action],
+      [:state],
+      "guard"
+    )
+  end
+
+  def assert_block_variables(block_ast, restricted_vars, pinable_vars, block_type)
+
+  def assert_block_variables({:^, _, [{_, _, nil}]}, _, _, _), do: :ok
+
+  def assert_block_variables({var, _, nil}, restricted_vars, pinable_vars, block_type) do
+    if var in restricted_vars do
+      if var in pinable_vars do
+        raise """
+        You should pin #{var} variable if you want to access it within #{block_type} block, ex.:
+          ^#{var}
+        Otherwise this variable name is reserved
+        """
+      end
+      raise """
+      #{var} variable name is reserved for #{block_type} block
+      """
+    end
+    :ok
+  end
+
+  def assert_block_variables({_, _, args}, restricted_vars, pinable_vars, block_type) do
+    Enum.each(args, fn expression ->
+      assert_block_variables(expression, restricted_vars, pinable_vars, block_type)
+    end)
+  end
+
+  def assert_state_exists(state_name, states) do
+    if not Keyword.has_key?(states, state_name) do
+      raise """
+      State #{inspect(state_name)} not found in declared states,
+      please be sure it was declared before transitions block, ex.:
+        state #{inspect(state_name)}
+      """
+    end
+  end
+
   defp parse_transition({:>>>, _, [left, to]}, acc) do
     [{:left_to, left} | [{:to, to} | acc]]
   end
 
   defp parse_transition({:when, _, [left, guard]}, acc) do
+    assert_guard_variables(guard)
     parse_transition(left, [{:when, guard} | acc])
   end
 
@@ -178,26 +233,28 @@ defmodule EXSM.Macro do
     if Keyword.has_key?(keyword, :action_function) do
       inject_action_function(keyword, user_state_param, event_param)
     else
-      inject_action_block(keyword)
+      inject_action_block(keyword, user_state_param, event_param)
     end
   end
 
   defp inject_action_function(keyword, user_state_param, event_param) do
     quote do
       _exsm_action = fn ->
-        _function = Util.function_to_arity_2(
-          unquote(Keyword.fetch!(keyword, :action_function))
-        )
+        _function = unquote(Keyword.fetch!(keyword, :action_function))
         _function.(
           unquote({user_state_param, [], nil}),
           unquote({event_param, [], nil})
         )
-       end
+      end
     end
   end
 
-  defp inject_action_block(keyword) do
+  defp inject_action_block(keyword, user_state_param, _event_param) do
     quote do
+      unquote({:=, [], [
+        {:_user_state_unused, [], nil},
+        {user_state_param, [], nil}
+      ]})
       _exsm_action = fn ->
         unquote(Keyword.fetch!(keyword, :action_block))
       end

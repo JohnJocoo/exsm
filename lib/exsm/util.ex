@@ -21,14 +21,22 @@ defmodule EXSM.Util do
     end
   end
 
-  def function_to_arity_2(function) do
+  def function_to_arity_2(function, function_ast) do
     arity =
       :erlang.fun_info(function)
       |> Keyword.fetch!(:arity)
 
     case arity do
-      2 -> function
-      0 -> fn _, _ -> function.() end
+      2 ->
+        function_ast
+
+      0 ->
+        quote do
+          fn _, _ ->
+            function = unquote(function_ast)
+            function.()
+          end
+        end
     end
   end
 
@@ -60,6 +68,32 @@ defmodule EXSM.Util do
       error ->
         {:error, error}
     end
+  end
+
+  def state_meta_by_name(module, name) do
+    module.__info__(:attributes)
+    |> Keyword.get(:states)
+    |> Keyword.get(name)
+  end
+
+  def enter_state(current_state, user_state, event \\ nil)
+
+  def enter_state(%EXSM.Macro.State{on_enter: nil}, user_state, _) do
+    {:noreply, user_state}
+  end
+
+  def enter_state(%EXSM.Macro.State{on_enter: on_enter}, user_state, event) do
+    on_enter.(user_state, event)
+  end
+
+  def leave_state(current_state, user_state, event \\ nil)
+
+  def leave_state(%EXSM.Macro.State{on_leave: nil}, user_state, _) do
+    {:noreply, user_state}
+  end
+
+  def leave_state(%EXSM.Macro.State{on_leave: on_leave}, user_state, event) do
+    on_leave.(user_state, event)
   end
 
   defp function_arity_0_or_2(function) do
