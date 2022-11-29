@@ -8,12 +8,13 @@ defmodule EXSM.Macro do
     @type t :: %__MODULE__{
                  state: EXSM.State.t(),
                  on_enter: EXSM.Macro.ast() | nil,
-                 on_leave: EXSM.Macro.ast() | nil
+                 on_leave: EXSM.Macro.ast() | nil,
+                 id: atom()
                }
-    defstruct [:state, :on_enter, :on_leave]
+    defstruct [:state, :on_enter, :on_leave, :id]
   end
 
-  def state_from_keyword(name, keyword) do
+  def state_from_keyword(name, keyword, seq_number) do
     has_duplicate_keys =
       Enum.group_by(keyword, &elem(&1, 0), &elem(&1, 1))
       |> Enum.any?(fn {_, elements} -> length(elements) > 1 end)
@@ -31,6 +32,7 @@ defmodule EXSM.Macro do
         description: Keyword.get(keyword, :description),
         initial?: Keyword.get(keyword, :initial?, false)
       },
+      id: make_state_id(name, seq_number),
       on_enter: Keyword.get(keyword, :on_enter),
       on_leave: Keyword.get(keyword, :on_leave)
     }
@@ -77,16 +79,12 @@ defmodule EXSM.Macro do
     end
   end
 
-  def transition_fstate_from_keyword(nil), do: :_
-
   def transition_fstate_from_keyword(keyword) do
     assert_has_keyword(keyword, :from, "transition", "source_state <- event",
       ":stopped <- :play >>> :playing")
 
     Keyword.fetch!(keyword, :from)
   end
-
-  def transition_event_from_keyword(nil, _), do: :_
 
   def transition_event_from_keyword(keyword, event_param) do
     assert_has_keyword(keyword, :event, "transition", "source_state <- event",
@@ -101,22 +99,11 @@ defmodule EXSM.Macro do
     end
   end
 
-  def transition_when_from_keyword(nil), do: :false
-
   def transition_when_from_keyword(keyword) do
     if Keyword.has_key?(keyword, :when) do
       Keyword.fetch!(keyword, :when)
     else
       :true
-    end
-  end
-
-  def transition_action_from_keyword(nil, _, _, _) do
-    quote do
-      raise """
-      No op transaction should never have been called.
-      Please report this bug to library developers.
-      """
     end
   end
 
@@ -207,6 +194,18 @@ defmodule EXSM.Macro do
         state #{inspect(state_name)}
       """
     end
+  end
+
+  defp make_state_id(name, _) when is_atom(name) do
+    name
+  end
+
+  defp make_state_id(name, _) when is_binary(name) do
+    String.to_atom(name)
+  end
+
+  defp make_state_id(_, seq_number) do
+    String.to_atom("_exsm_state_#{seq_number}")
   end
 
   defp parse_transition({:>>>, _, [left, to]}, acc) do

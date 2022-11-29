@@ -38,8 +38,10 @@ defmodule EXSM do
 
       unquote(block)
 
-      %EXSM.Macro.State{state: state} = state_meta = EXSM.Macro.state_from_keyword(unquote(name),
-        Module.delete_attribute(__MODULE__, :current_state_keyword)
+      %EXSM.Macro.State{state: state} = state_meta = EXSM.Macro.state_from_keyword(
+        unquote(name),
+        Module.delete_attribute(__MODULE__, :current_state_keyword),
+        length(Module.get_attribute(__MODULE__, :states_meta))
       )
       Module.put_attribute(__MODULE__, :states_meta, {unquote(name), state_meta})
       Module.put_attribute(__MODULE__, :states, state)
@@ -49,7 +51,11 @@ defmodule EXSM do
 
   defmacro state(name) do
     quote do
-      %EXSM.Macro.State{state: state} = state_meta = EXSM.Macro.state_from_keyword(unquote(name), [])
+      %EXSM.Macro.State{state: state} = state_meta = EXSM.Macro.state_from_keyword(
+        unquote(name),
+        [],
+        length(Module.get_attribute(__MODULE__, :states_meta))
+      )
       Module.put_attribute(__MODULE__, :states_meta, {unquote(name), state_meta})
       Module.put_attribute(__MODULE__, :states, state)
       EXSM._put_initial_state()
@@ -83,11 +89,11 @@ defmodule EXSM do
         unquote(block)
       end
     end
-    quote do
+
+    quote bind_quoted: [function_ast: function_ast] do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_enter")
 
-      on_enter = unquote(Macro.escape(function_ast))
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_enter, on_enter})
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_enter, function_ast})
     end
   end
 
@@ -110,11 +116,11 @@ defmodule EXSM do
         unquote(block)
       end
     end
-    quote do
+
+    quote bind_quoted: [function_ast: function_ast] do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_leave")
 
-      on_leave = unquote(Macro.escape(function_ast))
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_leave, on_leave})
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_leave, function_ast})
     end
   end
 
@@ -148,9 +154,17 @@ defmodule EXSM do
   end
 
   defmacro _inject_states_meta() do
-    quote do
-
-    end
+#    quote do
+#      states_meta = Module.get_attribute(__MODULE__, :states_meta)
+#
+#      defmodule EXSMStatesMeta do
+#
+#        for %EXSM.Macros.State{id: id, state: %EXSM.State{name: name}} <- states_meta do
+#
+#        end
+#
+#      end
+#    end
   end
 
   ### Transition table definition macros
@@ -162,7 +176,7 @@ defmodule EXSM do
       defmodule EXSMTransitions do
         import unquote(__MODULE__)
 
-        Module.register_attribute(__MODULE__, :transitions, accumulate: false)
+        Module.put_attribute(__MODULE__, :transitions, true)
 
         unquote(block)
 
@@ -224,52 +238,21 @@ defmodule EXSM do
   end
 
   defmacro _inject_transition() do
-    from_ast = {:unquote, [], [
-      quote do
-        EXSM.Macro.transition_fstate_from_keyword(
-          Module.get_attribute(__MODULE__, :current_transition_keyword)
-        )
-      end
-    ]}
-
-    event_ast = {:unquote, [], [
-      quote do
-        EXSM.Macro.transition_event_from_keyword(
-          Module.get_attribute(__MODULE__, :current_transition_keyword),
-          :exsm_event
-        )
-      end
-    ]}
-
-    when_ast = {:unquote, [], [
-      quote do
-        EXSM.Macro.transition_when_from_keyword(
-          Module.get_attribute(__MODULE__, :current_transition_keyword)
-        )
-      end
-    ]}
-
-    action_ast = {:unquote, [], [
-      quote do
-        EXSM.Macro.transition_action_from_keyword(
-          Module.get_attribute(__MODULE__, :current_transition_keyword),
-          :state,
-          :exsm_event
-        )
-      end
-    ]}
-
-    user_state = {:state, [], nil}
-
-    quote do
+    quote unquote: false do
       EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "_inject_transition")
 
-      if Module.has_attribute?(__MODULE__, :current_transition_keyword) do
+      transition_keyword = Module.delete_attribute(__MODULE__, :current_transition_keyword)
+
+      if transition_keyword != nil do
+        from_ast = EXSM.Macro.transition_fstate_from_keyword(transition_keyword)
+        event_ast = EXSM.Macro.transition_event_from_keyword(transition_keyword, :exsm_event)
+        when_ast = EXSM.Macro.transition_when_from_keyword(transition_keyword)
+        action_ast = EXSM.Macro.transition_action_from_keyword(transition_keyword, :state, :exsm_event)
+        user_state = {:state, [], nil}
+
         def handle_event(unquote(from_ast), unquote(event_ast), unquote(user_state)) when unquote(when_ast) do
           unquote(action_ast)
         end
-
-        Module.delete_attribute(__MODULE__, :current_transition_keyword)
       end
     end
   end
