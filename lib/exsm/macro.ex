@@ -107,17 +107,23 @@ defmodule EXSM.Macro do
     end
   end
 
-  def transition_action_from_keyword(keyword, user_state_param, event_param) do
+  def transition_action_from_keyword(keyword, user_state_param, event_param, states_meta) do
     assert_has_keyword(keyword, :to, "transition", ">>> dest_state",
       ":stopped <- :play >>> :playing")
     state_from = Keyword.fetch!(keyword, :from)
+    id_from = Keyword.fetch!(states_meta, Keyword.fetch!(keyword, :from_value)).id
     state_to = Keyword.fetch!(keyword, :to)
+    id_to = Keyword.fetch!(states_meta, Keyword.fetch!(keyword, :to_value)).id
 
     if Keyword.has_key?(keyword, :action) do
       quote do
         unquote(inject_action(keyword, user_state_param, event_param))
 
-        {:transition, {unquote(state_from), unquote(state_to), _exsm_action}}
+        {:transition, {
+          {unquote(state_from), unquote(id_from)},
+          {unquote(state_to), unquote(id_to)},
+          _exsm_action
+        }}
       end
     else
       quote do
@@ -125,7 +131,11 @@ defmodule EXSM.Macro do
           {:_user_state_unused, [], nil},
           {user_state_param, [], nil}
         ]})
-        {:transition, {unquote(state_from), unquote(state_to), nil}}
+        {:transition, {
+          {unquote(state_from), unquote(id_from)},
+          {unquote(state_to), unquote(id_to)},
+          nil
+        }}
       end
     end
   end

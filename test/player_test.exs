@@ -69,8 +69,8 @@ defmodule EXSM.PlayerTest do
         end
     end
 
-    def enter_stopped(_state, _event), do: :ok
-    def leave_stopped(_state, _event), do: :ok
+    def enter_stopped(state, event), do: Player.function_1(state, event)
+    def leave_stopped(state, event), do: Player.function_2(state, event)
   end
 
   defmacro assert_player_not_called(opts \\ []) do
@@ -84,7 +84,9 @@ defmodule EXSM.PlayerTest do
       :close_drawer,
       :start_detecting,
       :show_current_song,
-      :store_cd_info
+      :store_cd_info,
+      :function_1,
+      :function_2
     ]
     |> Enum.reject(&(&1 in except_functions))
     |> Enum.map(fn function ->
@@ -266,5 +268,76 @@ defmodule EXSM.PlayerTest do
     assert_called_exactly(Player.stop_playback(), 1)
     assert_called_exactly(Player.open_drawer(), 1)
     assert_player_not_called except: [:stop_playback, :open_drawer]
+  end
+
+  test_with_mock "EXSMStatesMeta verify :empty functions",
+                 Player, [:passthrough], [] do
+    assert :empty == Util.get_state_id(PlayerSM, :empty)
+    assert %EXSM.State{
+             name: :empty,
+             description: "No cd, also initial state",
+             initial?: true
+           } == Util.get_state_data(PlayerSM, :empty)
+    assert nil == Util.enter_state(PlayerSM, :empty, nil)
+    assert_called_exactly(Player.start_detecting(), 1)
+    assert {:error, :no_leave} == Util.leave_state(PlayerSM, :empty, nil)
+    assert_player_not_called except: [:start_detecting]
+  end
+
+  test_with_mock "EXSMStatesMeta verify :stopped functions",
+                 Player, [:passthrough], [] do
+    assert :stopped == Util.get_state_id(PlayerSM, :stopped)
+    assert %EXSM.State{
+             name: :stopped,
+             description: "Playback was stopped",
+             initial?: false
+           } == Util.get_state_data(PlayerSM, :stopped)
+    assert :user_state == Util.enter_state(PlayerSM, :stopped, :user_state, :event)
+    assert_called_exactly(Player.function_1(:user_state, :event), 1)
+    assert {:state, :data} == Util.leave_state(PlayerSM, :stopped, {:state, :data}, "event")
+    assert_called_exactly(Player.function_2({:state, :data}, "event"), 1)
+    assert_player_not_called except: [:function_1, :function_2]
+  end
+
+  test_with_mock "EXSMStatesMeta verify :playing functions",
+                 Player, [:passthrough], [] do
+    assert :playing == Util.get_state_id(PlayerSM, :playing)
+    assert %EXSM.State{
+             name: :playing,
+             description: "Playing a song now",
+             initial?: false
+           } == Util.get_state_data(PlayerSM, :playing)
+    assert :state == Util.enter_state(PlayerSM, :playing, :state)
+    assert_called_exactly(Player.show_current_song(), 1)
+    assert {:error, :no_leave} == Util.leave_state(PlayerSM, :playing, nil)
+    assert_player_not_called except: [:show_current_song]
+  end
+
+  test_with_mock "EXSMStatesMeta verify :open functions",
+                 Player, [:passthrough], [] do
+    assert :open == Util.get_state_id(PlayerSM, :open)
+    assert %EXSM.State{
+             name: :open,
+             description: "Drawer is open",
+             initial?: false
+           } == Util.get_state_data(PlayerSM, :open)
+    assert {:error, :no_enter} == Util.enter_state(PlayerSM, :open, nil)
+    assert_player_not_called()
+    assert {:error, :no_leave} == Util.leave_state(PlayerSM, :open, nil)
+    assert_player_not_called()
+  end
+
+  test_with_mock "EXSMStatesMeta verify :paused functions",
+                 Player, [:passthrough], [] do
+    assert :paused == Util.get_state_id(PlayerSM, :paused)
+    assert %EXSM.State{
+             name: :paused,
+             description: nil,
+             initial?: false
+           } == Util.get_state_data(PlayerSM, :paused)
+    assert {:error, :no_enter} == Util.enter_state(PlayerSM, :paused, nil)
+    assert_player_not_called()
+    assert {:error, :no_leave} == Util.leave_state(PlayerSM, :paused, nil)
+    assert_player_not_called()
   end
 end

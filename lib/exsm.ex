@@ -90,10 +90,12 @@ defmodule EXSM do
       end
     end
 
-    quote bind_quoted: [function_ast: function_ast] do
+    quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_enter")
 
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_enter, function_ast})
+      Module.put_attribute(__MODULE__, :current_state_keyword,
+        {:on_enter, unquote(Elixir.Macro.escape(function_ast))}
+      )
     end
   end
 
@@ -117,10 +119,12 @@ defmodule EXSM do
       end
     end
 
-    quote bind_quoted: [function_ast: function_ast] do
+    quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_leave")
 
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_leave, function_ast})
+      Module.put_attribute(__MODULE__, :current_state_keyword,
+        {:on_leave, unquote(Elixir.Macro.escape(function_ast))}
+      )
     end
   end
 
@@ -154,17 +158,40 @@ defmodule EXSM do
   end
 
   defmacro _inject_states_meta() do
-#    quote do
-#      states_meta = Module.get_attribute(__MODULE__, :states_meta)
-#
-#      defmodule EXSMStatesMeta do
-#
-#        for %EXSM.Macros.State{id: id, state: %EXSM.State{name: name}} <- states_meta do
-#
-#        end
-#
-#      end
-#    end
+    quote unquote: false do
+      states_meta =
+        Module.get_attribute(__MODULE__, :states_meta)
+        |> Enum.map(fn {_, %EXSM.Macro.State{} = state_meta} -> state_meta end)
+
+      defmodule EXSMStatesMeta do
+
+        for %EXSM.Macro.State{id: id, state: %EXSM.State{name: name}} <- states_meta do
+          def _exsm_find_id(unquote(Elixir.Macro.escape(name))) do
+            {:ok, unquote(id)}
+          end
+        end
+
+        def _exsm_find_id(_) do
+          {:error, :not_found}
+        end
+
+        for %EXSM.Macro.State{state: %EXSM.State{} = state} = meta_state <- states_meta do
+          %EXSM.Macro.State{id: id, on_enter: on_enter, on_leave: on_leave} = meta_state
+
+          def unquote(id)(:state) do
+            unquote(Elixir.Macro.escape(state))
+          end
+
+          def unquote(id)(:on_enter) do
+            unquote(on_enter)
+          end
+
+          def unquote(id)(:on_leave) do
+            unquote(on_leave)
+          end
+        end
+      end
+    end
   end
 
   ### Transition table definition macros
@@ -194,6 +221,8 @@ defmodule EXSM do
     expression_keyword = EXSM.Macro.transition_to_keyword(expression)
     expression_ast = Elixir.Macro.escape(expression_keyword)
 
+    state_to = Keyword.fetch!(expression_keyword, :to)
+
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "operator <-")
 
@@ -204,6 +233,8 @@ defmodule EXSM do
 
       Module.register_attribute(__MODULE__, :current_transition_keyword, accumulate: true)
       Module.put_attribute(__MODULE__, :current_transition_keyword, {:from, unquote(state_from_ast)})
+      Module.put_attribute(__MODULE__, :current_transition_keyword, {:from_value, unquote(state_from)})
+      Module.put_attribute(__MODULE__, :current_transition_keyword, {:to_value, unquote(state_to)})
       Enum.each(unquote(expression_ast), fn {key, value} ->
         if key == :to do
           EXSM.Macro.assert_state_exists(value, states)
@@ -247,7 +278,8 @@ defmodule EXSM do
         from_ast = EXSM.Macro.transition_fstate_from_keyword(transition_keyword)
         event_ast = EXSM.Macro.transition_event_from_keyword(transition_keyword, :exsm_event)
         when_ast = EXSM.Macro.transition_when_from_keyword(transition_keyword)
-        action_ast = EXSM.Macro.transition_action_from_keyword(transition_keyword, :state, :exsm_event)
+        states = Module.get_attribute(EXSM.Util.parent_module(__MODULE__), :states_meta)
+        action_ast = EXSM.Macro.transition_action_from_keyword(transition_keyword, :state, :exsm_event, states)
         user_state = {:state, [], nil}
 
         def handle_event(unquote(from_ast), unquote(event_ast), unquote(user_state)) when unquote(when_ast) do
