@@ -2,10 +2,36 @@ defmodule EXSM.Util do
   @moduledoc false
 
   @type event :: any()
-  @type on_enter_result :: {:noreply, EXSM.State.user_state()} |
-                           {:error, any()}
-  @type on_leave_result :: {:noreply, EXSM.State.user_state()} |
-                           {:error, any()}
+  @type on_enter_result :: :ok |
+                           {:noreply, EXSM.State.user_state()} |
+                           {:error, any()} |
+                           any()
+  @type on_leave_result :: :ok |
+                           {:noreply, EXSM.State.user_state()} |
+                           {:error, any()} |
+                           any()
+  @type action_result :: :ok |
+                         {:noreply, EXSM.State.user_state()} |
+                         {:reply, any()} |
+                         {:reply, any(), EXSM.State.user_state()} |
+                         {:error, any()} |
+                         any()
+  @type on_enter_result_mapped :: {:noreply, EXSM.State.user_state()} |
+                                  {:error, any()}
+  @type on_leave_result_mapped :: {:noreply, EXSM.State.user_state()} |
+                                  {:error, any()}
+  @type action_result_mapped :: {:noreply, EXSM.State.user_state()} |
+                                {:reply, any(), EXSM.State.user_state()} |
+                                {:error, any()}
+  @type on_enter_callback :: (EXSM.State.user_state(), event() -> on_enter_result())
+  @type on_leave_callback :: (EXSM.State.user_state(), event() -> on_leave_result())
+  @type action_callback :: ( -> action_result())
+  @type transition_result :: {:transition, {
+                                {EXSM.State.name(), atom()},
+                                {EXSM.State.name(), atom()},
+                                action_callback()}
+                             } |
+                             {:no_transition, :ignore | :reply | :error}
 
   def assert_state_function(function, context) do
     if not is_function(function) or
@@ -21,6 +47,7 @@ defmodule EXSM.Util do
     end
   end
 
+  @spec function_to_arity_2((any(), any() -> any()) | ( -> any()), EXSM.Macro.ast()) :: EXSM.Macro.ast()
   def function_to_arity_2(function, function_ast) do
     arity =
       :erlang.fun_info(function)
@@ -40,60 +67,90 @@ defmodule EXSM.Util do
     end
   end
 
+  @spec parent_module(module()) :: module()
   def parent_module(module) do
     Module.split(module)
     |> Enum.drop(-1)
     |> Module.concat()
   end
 
+  @spec state_full_by_name(module(), any()) :: {:ok, EXSM.State.t(), atom()} | {:error, :not_found}
+  def state_full_by_name(module, name) do
+    state_module = Module.concat(module, EXSMStatesMeta)
+    case apply(state_module, :_exsm_find_id, [name]) do
+      {:ok, id} ->
+        {:ok, apply(state_module, id, [:state]), id}
+
+      {:error, :not_found} ->
+        {:error, :not_found}
+    end
+  end
+
+  @spec state_id_by_name(module(), any()) :: {:ok, atom()} | {:error, :not_found}
+  def state_id_by_name(module, name) do
+    apply(Module.concat(module, EXSMStatesMeta), :_exsm_find_id, [name])
+  end
+
+  @spec state_by_id(module(), atom()) :: EXSM.State.t()
+  def state_by_id(module, id) do
+    apply(Module.concat(module, EXSMStatesMeta), id, [:state])
+  end
+
+  @spec on_enter_by_id(module(), atom()) :: on_enter_callback()
+  def on_enter_by_id(module, id) do
+    apply(Module.concat(module, EXSMStatesMeta), id, [:on_enter])
+  end
+
+  @spec on_leave_by_id(module(), atom()) :: on_leave_callback()
+  def on_leave_by_id(module, id) do
+    apply(Module.concat(module, EXSMStatesMeta), id, [:on_leave])
+  end
+
+  @spec transition_info(module(), EXSM.State.name(), event(), EXSM.State.user_state()) :: transition_result()
+  def transition_info(module, from, event, user_state) do
+    apply(Module.concat(module, EXSMTransitions), :handle_event, [from, event, user_state])
+  end
+
+  @spec handle_action(action_callback() | nil, EXSM.State.user_state()) :: action_result_mapped()
   def handle_action(nil, user_state), do: {:noreply, user_state}
 
   def handle_action(action, user_state) do
     case action.() do
-      :ok ->
-        {:noreply, user_state}
-
-      {:noreply, new_user_state} ->
-        {:noreply, new_user_state}
-
-      {:reply, reply} ->
-        {:reply, reply, user_state}
-
-      {:reply, reply, new_user_state} ->
-        {:reply, reply, new_user_state}
-
-      {:error, error} ->
-        {:error, error}
-
-      error ->
-        {:error, error}
+      :ok -> {:noreply, user_state}
+      {:noreply, new_user_state} -> {:noreply, new_user_state}
+      {:reply, reply} -> {:reply, reply, user_state}
+      {:reply, reply, new_user_state} -> {:reply, reply, new_user_state}
+      {:error, error} -> {:error, error}
+      error -> {:error, error}
     end
   end
 
-  def state_meta_by_name(module, name) do
-    module.__info__(:attributes)
-    |> Keyword.get(:states)
-    |> Keyword.get(name)
+  @spec enter_state(on_enter_callback() | nil, EXSM.State.user_state(), event() | nil) :: on_enter_result_mapped()
+  def enter_state(on_enter, user_state, event \\ nil)
+
+  def enter_state(nil, user_state, _), do: {:noreply, user_state}
+
+  def enter_state(on_enter, user_state, event) do
+    case on_enter.(user_state, event) do
+      :ok -> {:noreply, user_state}
+      {:noreply, new_user_state} -> {:noreply, new_user_state}
+      {:error, error} -> {:error, error}
+      error -> {:error, error}
+    end
   end
 
-  def enter_state(current_state, user_state, event \\ nil)
+  @spec leave_state(on_leave_callback() | nil, EXSM.State.user_state(), event() | nil) :: on_leave_result_mapped()
+  def leave_state(on_leave, user_state, event \\ nil)
 
-  def enter_state(%EXSM.Macro.State{on_enter: nil}, user_state, _) do
-    {:noreply, user_state}
-  end
+  def leave_state(nil, user_state, _), do: {:noreply, user_state}
 
-  def enter_state(%EXSM.Macro.State{on_enter: on_enter}, user_state, event) do
-    on_enter.(user_state, event)
-  end
-
-  def leave_state(current_state, user_state, event \\ nil)
-
-  def leave_state(%EXSM.Macro.State{on_leave: nil}, user_state, _) do
-    {:noreply, user_state}
-  end
-
-  def leave_state(%EXSM.Macro.State{on_leave: on_leave}, user_state, event) do
-    on_leave.(user_state, event)
+  def leave_state(on_leave, user_state, event) do
+    case on_leave.(user_state, event) do
+      :ok -> {:noreply, user_state}
+      {:noreply, new_user_state} -> {:noreply, new_user_state}
+      {:error, error} -> {:error, error}
+      error -> {:error, error}
+    end
   end
 
   defp function_arity_0_or_2(function) do
