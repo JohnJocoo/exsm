@@ -7,13 +7,15 @@ defmodule EXSM.State do
   @type t :: %EXSM.State{
                name: name(),
                description: String.t(),
-               initial?: boolean()
+               initial?: boolean(),
+               region: atom() | nil
              }
   @enforce_keys [:name]
   defstruct [
     :name,
     description: nil,
-    initial?: false
+    initial?: false,
+    region: nil
   ]
 
 end
