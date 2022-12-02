@@ -45,6 +45,7 @@ defmodule EXSM.Util do
       #{context}: fn -> ... end
       """
     end
+    :ok
   end
 
   @spec function_to_arity_2((any(), any() -> any()) | ( -> any()), EXSM.Macro.ast()) :: EXSM.Macro.ast()

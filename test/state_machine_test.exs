@@ -91,10 +91,38 @@ defmodule EXSM.StateMachineTest do
   end
 
   test "update sm two states with regions" do
+    state_1 = %State{name: :normal, region: :main}
+    state_2 = %State{name: :empty, region: :player}
+    state_machine = StateMachine.new(TestM, [state_1, state_2], [])
+    assert state_1 == StateMachine.current_state(state_machine, :main)
+    assert state_2 == StateMachine.current_state(state_machine, :player)
 
+    updated_state_1 = %State{name: :failed, region: :main}
+    updated_state_2 = %State{name: :full, region: :player}
+    updated_state_machine = StateMachine.update_current_state(state_machine, updated_state_1, :main)
+    assert updated_state_1 == StateMachine.current_state(updated_state_machine, :main)
+    updated_state_machine = StateMachine.update_current_state(updated_state_machine, updated_state_2, :player)
+    assert updated_state_2 == StateMachine.current_state(updated_state_machine, :player)
+    all_states = StateMachine.all_current_states(updated_state_machine)
+    assert updated_state_1 in all_states
+    assert updated_state_2 in all_states
   end
 
   test "update sm states with non-existing regions" do
+    state_machine = StateMachine.new(TestM, [%State{name: :empty}], [])
+    assert %State{name: :empty} == StateMachine.current_state(state_machine)
+    region_state = %State{name: :full, region: :default}
+    assert_raise(ArgumentError,
+                 ~r/region .?default does not exist for state machine .*TestM.*/,
+                 fn -> StateMachine.update_current_state(state_machine, region_state, :default) end)
 
+    state_1 = %State{name: :normal, region: :main}
+    state_2 = %State{name: :empty, region: :player}
+    state_machine = StateMachine.new(TestM, [state_1, state_2], [])
+    assert state_1 == StateMachine.current_state(state_machine, :main)
+    assert state_2 == StateMachine.current_state(state_machine, :player)
+    assert_raise(ArgumentError,
+                 ~r/region .?default does not exist for state machine .*TestM.*/,
+                 fn -> StateMachine.update_current_state(state_machine, region_state, :default) end)
   end
 end

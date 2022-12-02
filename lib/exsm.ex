@@ -14,19 +14,26 @@ defmodule EXSM do
     end
 
     quote do
-      alias __MODULE__.EXSMTransitions
-
       import unquote(__MODULE__)
+
+      @before_compile EXSM
 
       Module.register_attribute(__MODULE__, :states, accumulate: true, persist: true)
       Module.register_attribute(__MODULE__, :states_meta, accumulate: true)
       Module.register_attribute(__MODULE__, :initial_state, persist: true)
       Module.put_attribute(__MODULE__, :default_transition_policy, unquote(default_transition_policy))
+      Module.put_attribute(__MODULE__, :states_meta_defined, false)
 
       @spec states() :: [EXSM.State.t()]
       def states() do
         EXSM.states(__MODULE__)
       end
+    end
+  end
+
+  defmacro __before_compile__(_env) do
+    quote do
+      EXSM._inject_states_meta()
     end
   end
 
@@ -159,37 +166,41 @@ defmodule EXSM do
 
   defmacro _inject_states_meta() do
     quote unquote: false do
-      states_meta =
-        Module.get_attribute(__MODULE__, :states_meta)
-        |> Enum.map(fn {_, %EXSM.Macro.State{} = state_meta} -> state_meta end)
+      if not Module.get_attribute(__MODULE__, :states_meta_defined) do
+        states_meta =
+          Module.get_attribute(__MODULE__, :states_meta)
+          |> Enum.map(fn {_, %EXSM.Macro.State{} = state_meta} -> state_meta end)
 
-      defmodule EXSMStatesMeta do
+        defmodule EXSMStatesMeta do
 
-        for %EXSM.Macro.State{id: id, state: %EXSM.State{name: name}} <- states_meta do
-          def _exsm_find_id(unquote(Elixir.Macro.escape(name))) do
-            {:ok, unquote(id)}
+          for %EXSM.Macro.State{id: id, state: %EXSM.State{name: name}} <- states_meta do
+            def _exsm_find_id(unquote(Elixir.Macro.escape(name))) do
+              {:ok, unquote(id)}
+            end
+          end
+
+          def _exsm_find_id(_) do
+            {:error, :not_found}
+          end
+
+          for %EXSM.Macro.State{state: %EXSM.State{} = state} = meta_state <- states_meta do
+            %EXSM.Macro.State{id: id, on_enter: on_enter, on_leave: on_leave} = meta_state
+
+            def unquote(id)(:state) do
+              unquote(Elixir.Macro.escape(state))
+            end
+
+            def unquote(id)(:on_enter) do
+              unquote(on_enter)
+            end
+
+            def unquote(id)(:on_leave) do
+              unquote(on_leave)
+            end
           end
         end
 
-        def _exsm_find_id(_) do
-          {:error, :not_found}
-        end
-
-        for %EXSM.Macro.State{state: %EXSM.State{} = state} = meta_state <- states_meta do
-          %EXSM.Macro.State{id: id, on_enter: on_enter, on_leave: on_leave} = meta_state
-
-          def unquote(id)(:state) do
-            unquote(Elixir.Macro.escape(state))
-          end
-
-          def unquote(id)(:on_enter) do
-            unquote(on_enter)
-          end
-
-          def unquote(id)(:on_leave) do
-            unquote(on_leave)
-          end
-        end
+        Module.put_attribute(__MODULE__, :states_meta_defined, true)
       end
     end
   end
