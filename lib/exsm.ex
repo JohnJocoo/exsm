@@ -88,11 +88,35 @@ defmodule EXSM do
     end
   end
 
-  defmacro on_enter(do: block) do
+  # on_enter &Module.function/0
+  # on_enter &Module.function/2
+  # on_enter do: Module.function()
+  # on_enter [user_state: state], do: Module.function(state)
+  # on_enter user_state: state, event: event do
+  #   Module.function(state, event)
+  # end
+  defmacro on_enter(opts_or_function, do_block \\ [])
+
+  defmacro on_enter([do: block], []), do: EXSM._on_enter([], do: block)
+
+  defmacro on_enter(opts, do: block) when is_list(opts), do: EXSM._on_enter(opts, do: block)
+
+  defmacro on_enter(function, []) when not is_list(function) do
+    quote do
+      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_enter")
+
+      EXSM.Util.assert_state_function(unquote(function), "on_enter")
+
+      on_enter = EXSM.Util.function_to_arity_2(unquote(function), unquote(Macro.escape(function)))
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_enter, on_enter})
+    end
+  end
+
+  def _on_enter(opts, do: block) when is_list(opts) do
+    user_state_ast = EXSM.Macro.function_param_from_opts(opts, :user_state)
+    event_ast = EXSM.Macro.function_param_from_opts(opts, :event)
     function_ast = quote do
-      fn state, event ->
-        _user_state_unused = state
-        _exsm_event_unused = event
+      fn unquote(user_state_ast), unquote(event_ast) ->
         unquote(block)
       end
     end
@@ -106,22 +130,35 @@ defmodule EXSM do
     end
   end
 
-  defmacro on_enter(function) do
+  # on_leave &Module.function/0
+  # on_leave &Module.function/2
+  # on_leave do: Module.function()
+  # on_leave [user_state: state], do: Module.function(state)
+  # on_leave user_state: state, event: event do
+  #   Module.function(state, event)
+  # end
+  defmacro on_leave(opts_or_function, do_block \\ [])
+
+  defmacro on_leave([do: block], []), do: EXSM._on_leave([], do: block)
+
+  defmacro on_leave(opts, do: block) when is_list(opts), do: EXSM._on_leave(opts, do: block)
+
+  defmacro on_leave(function, []) when not is_list(function) do
     quote do
-      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_enter")
+      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_leave")
 
-      EXSM.Util.assert_state_function(unquote(function), "on_enter")
+      EXSM.Util.assert_state_function(unquote(function), "on_leave")
 
-      on_enter = EXSM.Util.function_to_arity_2(unquote(function), unquote(Macro.escape(function)))
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_enter, on_enter})
+      on_leave = EXSM.Util.function_to_arity_2(unquote(function), unquote(Macro.escape(function)))
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_leave, on_leave})
     end
   end
 
-  defmacro on_leave(do: block) do
+  def _on_leave(opts, do: block) when is_list(opts) do
+    user_state_ast = EXSM.Macro.function_param_from_opts(opts, :user_state)
+    event_ast = EXSM.Macro.function_param_from_opts(opts, :event)
     function_ast = quote do
-      fn state, event ->
-        _user_state_unused = state
-        _exsm_event_unused = event
+      fn unquote(user_state_ast), unquote(event_ast) ->
         unquote(block)
       end
     end
@@ -132,17 +169,6 @@ defmodule EXSM do
       Module.put_attribute(__MODULE__, :current_state_keyword,
         {:on_leave, unquote(Elixir.Macro.escape(function_ast))}
       )
-    end
-  end
-
-  defmacro on_leave(function) do
-    quote do
-      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_leave")
-
-      EXSM.Util.assert_state_function(unquote(function), "on_leave")
-
-      on_leave = EXSM.Util.function_to_arity_2(unquote(function), unquote(Macro.escape(function)))
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_leave, on_leave})
     end
   end
 

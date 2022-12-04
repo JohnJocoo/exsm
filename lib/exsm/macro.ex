@@ -206,6 +206,13 @@ defmodule EXSM.Macro do
     end
   end
 
+  def function_param_from_opts(opts, name) do
+    case Keyword.get(opts, name) do
+      nil -> {:_, [], nil}
+      ast -> ast
+    end
+  end
+
   defp make_state_id(name, _) when is_atom(name) do
     name
   end
