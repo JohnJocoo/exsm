@@ -113,6 +113,7 @@ defmodule EXSM do
   end
 
   def _on_enter(opts, do: block) when is_list(opts) do
+    EXSM.Util.assert_only_allowed_keywords(opts, [:user_state, :event], "on_enter")
     user_state_ast = EXSM.Macro.function_param_from_opts(opts, :user_state)
     event_ast = EXSM.Macro.function_param_from_opts(opts, :event)
     function_ast = quote do
@@ -155,6 +156,7 @@ defmodule EXSM do
   end
 
   def _on_leave(opts, do: block) when is_list(opts) do
+    EXSM.Util.assert_only_allowed_keywords(opts, [:user_state, :event], "on_leave")
     user_state_ast = EXSM.Macro.function_param_from_opts(opts, :user_state)
     event_ast = EXSM.Macro.function_param_from_opts(opts, :event)
     function_ast = quote do
@@ -265,6 +267,7 @@ defmodule EXSM do
 
       states = Module.get_attribute(EXSM.Util.parent_module(__MODULE__), :states_meta)
       EXSM.Macro.assert_state_exists(unquote(state_from), states)
+      EXSM.Macro.assert_state_exists(unquote(state_to), states)
 
       EXSM._inject_transition()
 
@@ -273,25 +276,14 @@ defmodule EXSM do
       Module.put_attribute(__MODULE__, :current_transition_keyword, {:from_value, unquote(state_from)})
       Module.put_attribute(__MODULE__, :current_transition_keyword, {:to_value, unquote(state_to)})
       Enum.each(unquote(expression_ast), fn {key, value} ->
-        if key == :to do
-          EXSM.Macro.assert_state_exists(value, states)
-        end
         Module.put_attribute(__MODULE__, :current_transition_keyword, {key, value})
       end)
     end
   end
 
-  defmacro action(do: expression) do
-    EXSM.Macro.assert_action_variables(expression)
-    expression_ast = Elixir.Macro.escape(expression)
+  defmacro action([user_state: _] = opts, do: expression), do: EXSM._action(opts, do: expression)
 
-    quote do
-      EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "action")
-
-      Module.put_attribute(__MODULE__, :current_transition_keyword, {:action, true})
-      Module.put_attribute(__MODULE__, :current_transition_keyword, {:action_block, unquote(expression_ast)})
-    end
-  end
+  defmacro action(do: expression), do: EXSM._action([], do: expression)
 
   defmacro action(function) do
     function_ast = Elixir.Macro.escape(function)
@@ -302,6 +294,19 @@ defmodule EXSM do
       action = EXSM.Util.function_to_arity_2(unquote(function), unquote(function_ast))
       Module.put_attribute(__MODULE__, :current_transition_keyword, {:action, true})
       Module.put_attribute(__MODULE__, :current_transition_keyword, {:action_function, action})
+    end
+  end
+
+  def _action(opts, do: expression) do
+    EXSM.Util.assert_only_allowed_keywords(opts, [:user_state], "action")
+    EXSM.Macro.assert_action_variables(expression)
+    expression_ast = Elixir.Macro.escape(expression)
+
+    quote do
+      EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "action")
+
+      Module.put_attribute(__MODULE__, :current_transition_keyword, {:action, true})
+      Module.put_attribute(__MODULE__, :current_transition_keyword, {:action_block, unquote(expression_ast)})
     end
   end
 

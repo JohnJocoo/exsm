@@ -27,4 +27,4 @@ exsm-*.tar
 
 # Idea
 /.idea/
-*.iml
+exsm.iml

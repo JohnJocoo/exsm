@@ -1,5 +1,6 @@
 defmodule EXSM.UtilTest do
   use ExUnit.Case
+  use ExUnitProperties
 
   alias EXSM.Util
   alias EXSM.Test.Callbacks
@@ -73,6 +74,51 @@ defmodule EXSM.UtilTest do
     end
   end
 
+  defmodule TransitionTestModule do
+    use EXSM
+
+    state :one
+    state :two
+    state :three
+    state %{state: "one"}
+    state %{state: "two"}
+    state :initial
+    state :ok
+    state :error
+    state :stopped
+    state :playing
+    state :paused
+
+    transitions do
+      :one <- :increment >>> :two
+      :two <- :increment >>> :three
+      :two <- :decrement >>> :one
+      :one <- {:add, 2} >>> :three
+
+      %{state: "one"} <- event >>> %{state: "two"} when is_binary(event) and event in ["increment", "double"]
+
+      :initial <- :go_to_ok >>> :ok
+      :initial <- _ >>> :error
+
+      :stopped <- :play >>> :playing
+        action &Callbacks.function_0/0
+      :playing <- :stop >>> :stopped
+        action &Callbacks.function_2/2
+      :playing <- :pause >>> :paused
+        action do: Callbacks.function_0()
+      :paused <- :pause >>> :playing
+        action do
+          Callbacks.function_0()
+        end
+      :paused <- :stop >>> :stopped
+        action user_state: state do
+          Callbacks.function_1(state)
+        end
+      :paused <- :play >>> :playing
+        action [user_state: state], do: Callbacks.function_1(state)
+    end
+  end
+
   test "assert_state_function 0 arity" do
     assert :ok == Util.assert_state_function(fn -> :ok end, "test")
   end
@@ -89,6 +135,42 @@ defmodule EXSM.UtilTest do
   test "assert_state_function 3 arity fail" do
     assert_raise(RuntimeError,
                  fn -> Util.assert_state_function(fn _, _, _ -> :ok end, "test") end)
+  end
+
+  test "assert_only_allowed_keywords 1 allowed" do
+    check all key <- StreamData.atom(:alphanumeric),
+              value <- StreamData.term() do
+      assert :ok == Util.assert_only_allowed_keywords([{key, value}], [key], "test")
+    end
+  end
+
+  test "assert_only_allowed_keywords 2 allowed" do
+    check all key1 <- StreamData.atom(:alphanumeric),
+              key2 <- StreamData.atom(:alphanumeric),
+              value <- StreamData.term() do
+      assert :ok == Util.assert_only_allowed_keywords([{key1, value}], [key1, key2], "test")
+    end
+    check all key1 <- StreamData.atom(:alphanumeric),
+              key2 <- StreamData.atom(:alphanumeric),
+              value <- StreamData.term() do
+      assert :ok == Util.assert_only_allowed_keywords([{key1, value}, {key2, value}], [key1, key2], "test")
+    end
+  end
+
+  test "assert_only_allowed_keywords 0 allowed" do
+    check all key <- StreamData.atom(:alphanumeric),
+              value <- StreamData.term() do
+      assert_raise(RuntimeError,
+        fn -> Util.assert_only_allowed_keywords([{key, value}], [], "test") end)
+    end
+  end
+
+  test "assert_only_allowed_keywords not in allowed" do
+    check all key1 <- StreamData.atom(:alphanumeric),
+              value <- StreamData.term() do
+      assert_raise(RuntimeError,
+        fn -> Util.assert_only_allowed_keywords([{key1, value}], [:does_not_exist], "test") end)
+    end
   end
 
   test "function_to_arity_2 arity 2" do
@@ -233,5 +315,9 @@ defmodule EXSM.UtilTest do
 
   test "on_leave_by_id :one" do
     assert nil == Util.on_leave_by_id(TestModule, :one)
+  end
+
+  test "transition_info " do
+
   end
 end

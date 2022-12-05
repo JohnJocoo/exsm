@@ -111,9 +111,17 @@ defmodule EXSM.Macro do
     assert_has_keyword(keyword, :to, "transition", ">>> dest_state",
       ":stopped <- :play >>> :playing")
     state_from = Keyword.fetch!(keyword, :from)
-    id_from = Keyword.fetch!(states_meta, Keyword.fetch!(keyword, :from_value)).id
+    from_value = Keyword.fetch!(keyword, :from_value)
+    %State{id: id_from} = Enum.find_value(states_meta, fn
+      {^from_value, value} -> value
+      _ -> false
+    end)
     state_to = Keyword.fetch!(keyword, :to)
-    id_to = Keyword.fetch!(states_meta, Keyword.fetch!(keyword, :to_value)).id
+    to_value = Keyword.fetch!(keyword, :to_value)
+    %State{id: id_to} = Enum.find_value(states_meta, fn
+      {^to_value, value} -> value
+      _ -> false
+    end)
 
     if Keyword.has_key?(keyword, :action) do
       quote do
@@ -155,8 +163,7 @@ defmodule EXSM.Macro do
   def assert_action_variables(block_ast) do
     assert_block_variables(
       block_ast,
-      [:state, :exsm_event, :_user_state_unused, :_exsm_action],
-      [:state],
+      [:exsm_event, :_user_state_unused, :_exsm_action],
       "action"
     )
   end
@@ -164,25 +171,17 @@ defmodule EXSM.Macro do
   def assert_guard_variables(block_ast) do
     assert_block_variables(
       block_ast,
-      [:state, :exsm_event, :_user_state_unused, :_exsm_action],
-      [:state],
+      [:exsm_event, :_user_state_unused, :_exsm_action],
       "guard"
     )
   end
 
-  def assert_block_variables(block_ast, restricted_vars, pinable_vars, block_type)
+  def assert_block_variables(block_ast, restricted_vars, block_type)
 
-  def assert_block_variables({:^, _, [{_, _, nil}]}, _, _, _), do: :ok
+  def assert_block_variables({:^, _, [{_, _, nil}]}, _, _), do: :ok
 
-  def assert_block_variables({var, _, nil}, restricted_vars, pinable_vars, block_type) do
+  def assert_block_variables({var, _, nil}, restricted_vars, block_type) do
     if var in restricted_vars do
-      if var in pinable_vars do
-        raise """
-        You should pin #{var} variable if you want to access it within #{block_type} block, ex.:
-          ^#{var}
-        Otherwise this variable name is reserved
-        """
-      end
       raise """
       #{var} variable name is reserved for #{block_type} block
       """
@@ -190,14 +189,16 @@ defmodule EXSM.Macro do
     :ok
   end
 
-  def assert_block_variables({_, _, args}, restricted_vars, pinable_vars, block_type) do
+  def assert_block_variables({_, _, args}, restricted_vars, block_type) do
     Enum.each(args, fn expression ->
-      assert_block_variables(expression, restricted_vars, pinable_vars, block_type)
+      assert_block_variables(expression, restricted_vars, block_type)
     end)
   end
 
+  def assert_block_variables(arg, _, _) when not is_tuple(arg), do: :ok
+
   def assert_state_exists(state_name, states) do
-    if not Keyword.has_key?(states, state_name) do
+    if not Enum.any?(states, fn {key, _} -> key == state_name end) do
       raise """
       State #{inspect(state_name)} not found in declared states,
       please be sure it was declared before transitions block, ex.:

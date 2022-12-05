@@ -48,6 +48,16 @@ defmodule EXSM.Util do
     :ok
   end
 
+  def assert_only_allowed_keywords(opts, allowed, context) do
+    case Enum.find(opts, fn {key, _} -> key not in allowed end) do
+      nil ->
+        :ok
+
+      {key, _} ->
+        raise "#{key} is not allowed in options for #{context}"
+    end
+  end
+
   @spec function_to_arity_2((any(), any() -> any()) | ( -> any()), EXSM.Macro.ast()) :: EXSM.Macro.ast()
   def function_to_arity_2(function, function_ast) do
     arity =
