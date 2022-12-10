@@ -88,6 +88,9 @@ defmodule EXSM.UtilTest do
     state :stopped
     state :playing
     state :paused
+    state :open
+    state :closed
+    state :locked
 
     transitions do
       :one <- :increment >>> :two
@@ -105,10 +108,10 @@ defmodule EXSM.UtilTest do
       :playing <- :stop >>> :stopped
         action &Callbacks.function_2/2
       :playing <- :pause >>> :paused
-        action do: Callbacks.function_0()
+        action do: Callbacks.function_1(:playing_pause)
       :paused <- :pause >>> :playing
         action do
-          Callbacks.function_0()
+          Callbacks.function_1(:paused_pause)
         end
       :paused <- :stop >>> :stopped
         action user_state: state do
@@ -116,6 +119,19 @@ defmodule EXSM.UtilTest do
         end
       :paused <- :play >>> :playing
         action [user_state: state], do: Callbacks.function_1(state)
+
+      :open <- :close = event >>> :closed
+        action do: Callbacks.function_1(event)
+      :closed <- :open = open_event >>> :open
+        action do
+          Callbacks.function_1(open_event)
+        end
+      :closed <- event >>> :locked when event in [:lock, :secure]
+        action user_state: state do
+          Callbacks.function_2(state, event)
+        end
+      :locked <- {:unlock, code} >>> :closed when code == "1234"
+        action [user_state: state], do: Callbacks.function_2(state, code)
     end
   end
 
@@ -317,7 +333,109 @@ defmodule EXSM.UtilTest do
     assert nil == Util.on_leave_by_id(TestModule, :one)
   end
 
-  test "transition_info " do
+  test "transition_info :non_existing_state <- :increment" do
+    assert {:no_transition, :reply} ==
+             Util.transition_info(TransitionTestModule, :non_existing_state, :increment, nil)
+  end
 
+  test "transition_info :one <- :non_existing_event" do
+    assert {:no_transition, :reply} ==
+             Util.transition_info(TransitionTestModule, :one, :non_existing_event, nil)
+  end
+
+  test "transition_info :one <- :increment >>> :two" do
+    assert {:transition, {{:one, :one}, {:two, :two}, nil}} ==
+             Util.transition_info(TransitionTestModule, :one, :increment, nil)
+  end
+
+  test "transition_info :two <- :increment >>> :three" do
+    assert {:transition, {{:two, :two}, {:three, :three}, nil}} ==
+             Util.transition_info(TransitionTestModule, :two, :increment, nil)
+  end
+
+  test "transition_info :two <- :decrement >>> :one" do
+    assert {:transition, {{:two, :two}, {:one, :one}, nil}} ==
+             Util.transition_info(TransitionTestModule, :two, :decrement, nil)
+  end
+
+  test "transition_info :one <- {:add, 2} >>> :three" do
+    assert {:transition, {{:one, :one}, {:three, :three}, nil}} ==
+             Util.transition_info(TransitionTestModule, :one, {:add, 2}, nil)
+  end
+
+  test "transition_info %{state: 'one'} <- 'increment' >>> %{state: 'two'}" do
+    {:ok, from_id} = Util.state_id_by_name(TransitionTestModule, %{state: "one"})
+    {:ok, to_id} = Util.state_id_by_name(TransitionTestModule, %{state: "two"})
+    assert {:transition, {{%{state: "one"}, from_id}, {%{state: "two"}, to_id}, nil}} ==
+             Util.transition_info(TransitionTestModule, %{state: "one"}, "increment", nil)
+
+  end
+
+  test "transition_info %{state: 'one'} <- 'double' >>> %{state: 'two'}" do
+    {:ok, from_id} = Util.state_id_by_name(TransitionTestModule, %{state: "one"})
+    {:ok, to_id} = Util.state_id_by_name(TransitionTestModule, %{state: "two"})
+    assert {:transition, {{%{state: "one"}, from_id}, {%{state: "two"}, to_id}, nil}} ==
+             Util.transition_info(TransitionTestModule, %{state: "one"}, "double", nil)
+
+  end
+
+  test "transition_info %{state: 'one'} <- 'triple' >>> %{state: 'two'}" do
+    assert {:no_transition, :reply} ==
+             Util.transition_info(TransitionTestModule, %{state: "one"}, "triple", nil)
+
+  end
+
+  test "transition_info :initial <- :go_to_ok >>> :ok" do
+    assert {:transition, {{:initial, :initial}, {:ok, :ok}, nil}} ==
+             Util.transition_info(TransitionTestModule, :initial, :go_to_ok, nil)
+  end
+
+  test "transition_info :initial <- _ >>> :error" do
+    check all event <- StreamData.atom(:alphanumeric) do
+      assert {:transition, {{:initial, :initial}, {:error, :error}, nil}} ==
+               Util.transition_info(TransitionTestModule, :initial, event, nil)
+    end
+  end
+
+  test "transition_info :stopped <- :play >>> :playing" do
+    {:transition, {{:stopped, :stopped}, {:playing, :playing}, function}} =
+             Util.transition_info(TransitionTestModule, :stopped, :play, nil)
+    assert {Callbacks, :function_0} == function.()
+  end
+
+  test "transition_info :playing <- :stop >>> :stopped" do
+    {:transition, {{:playing, :playing}, {:stopped, :stopped}, function}} =
+      Util.transition_info(TransitionTestModule, :playing, :stop, {:state, 1})
+    assert {Callbacks, :function_2, {:state, 1}, :stop} == function.()
+  end
+
+  test "transition_info :playing <- :pause >>> :paused" do
+    {:transition, {{:playing, :playing}, {:paused, :paused}, function}} =
+      Util.transition_info(TransitionTestModule, :playing, :pause, nil)
+    assert {Callbacks, :function_1, :playing_pause} == function.()
+  end
+
+  test "transition_info :paused <- :pause >>> :playing" do
+    {:transition, {{:paused, :paused}, {:playing, :playing}, function}} =
+      Util.transition_info(TransitionTestModule, :paused, :pause, nil)
+    assert {Callbacks, :function_1, :paused_pause} == function.()
+  end
+
+  test "transition_info :paused <- :stop >>> :stopped" do
+    {:transition, {{:paused, :paused}, {:stopped, :stopped}, function}} =
+      Util.transition_info(TransitionTestModule, :paused, :stop, {:state, 2})
+    assert {Callbacks, :function_1, {:state, 2}} == function.()
+  end
+
+  test "transition_info :paused <- :play >>> :playing" do
+    {:transition, {{:paused, :paused}, {:playing, :playing}, function}} =
+      Util.transition_info(TransitionTestModule, :paused, :play, {:state, 3})
+    assert {Callbacks, :function_1, {:state, 3}} == function.()
+  end
+
+  test "transition_info :open <- :close = event >>> :closed" do
+    {:transition, {{:open, :open}, {:closed, :closed}, function}} =
+      Util.transition_info(TransitionTestModule, :open, :close, nil)
+    assert {Callbacks, :function_1, :close} == function.()
   end
 end
