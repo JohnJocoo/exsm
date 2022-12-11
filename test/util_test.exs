@@ -130,7 +130,7 @@ defmodule EXSM.UtilTest do
         action user_state: state do
           Callbacks.function_2(state, event)
         end
-      :locked <- {:unlock, code} >>> :closed when code == "1234"
+      :locked <- {:unlock, code} >>> :closed when code == state.code
         action [user_state: state], do: Callbacks.function_2(state, code)
     end
   end
@@ -267,32 +267,48 @@ defmodule EXSM.UtilTest do
 
   test "on_enter_by_id :on_enter_0" do
     function = Util.on_enter_by_id(TestModule, :on_enter_0)
-    assert {Callbacks, :function_0} = function.(:state, :event)
+    assert {Callbacks, :function_0} == function.(:state, :event)
   end
 
   test "on_enter_by_id :on_enter_2" do
     function = Util.on_enter_by_id(TestModule, :on_enter_2)
-    assert {Callbacks, :function_2, :state, :event} = function.(:state, :event)
+    assert {Callbacks, :function_2, :state, :event} == function.(:state, :event)
+  end
+
+  test "on_enter_by_id :on_enter_2, state = any(), event = any()" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term() do
+      function = Util.on_enter_by_id(TestModule, :on_enter_2)
+      assert {Callbacks, :function_2, state, event} == function.(state, event)
+    end
   end
 
   test "on_enter_by_id :on_enter_do" do
     function = Util.on_enter_by_id(TestModule, :on_enter_do)
-    assert {Callbacks, :function_1, {TestModule, :on_enter_do}} = function.(:state, :event)
+    assert {Callbacks, :function_1, {TestModule, :on_enter_do}} == function.(:state, :event)
   end
 
   test "on_enter_by_id :on_enter_do_state" do
     function = Util.on_enter_by_id(TestModule, :on_enter_do_state)
-    assert {Callbacks, :function_2, {TestModule, :on_enter_do_state}, :state} = function.(:state, :event)
+    assert {Callbacks, :function_2, {TestModule, :on_enter_do_state}, :state} == function.(:state, :event)
   end
 
   test "on_enter_by_id :on_enter_do_event" do
     function = Util.on_enter_by_id(TestModule, :on_enter_do_event)
-    assert {Callbacks, :function_2, {TestModule, :on_enter_do_event}, :event} = function.(:state, :event)
+    assert {Callbacks, :function_2, {TestModule, :on_enter_do_event}, :event} == function.(:state, :event)
   end
 
   test "on_enter_by_id :on_enter_do_state_event" do
     function = Util.on_enter_by_id(TestModule, :on_enter_do_state_event)
-    assert {Callbacks, :function_3, {TestModule, :on_enter_do_state_event}, :state, :event} = function.(:state, :event)
+    assert {Callbacks, :function_3, {TestModule, :on_enter_do_state_event}, :state, :event} == function.(:state, :event)
+  end
+
+  test "on_enter_by_id :on_enter_do_state_event, state = any(), event = any()" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term() do
+      function = Util.on_enter_by_id(TestModule, :on_enter_do_state_event)
+      assert {Callbacks, :function_3, {TestModule, :on_enter_do_state_event}, state, event} == function.(state, event)
+    end
   end
 
   test "on_enter_by_id :one" do
@@ -301,32 +317,48 @@ defmodule EXSM.UtilTest do
 
   test "on_leave_by_id :on_leave_0" do
     function = Util.on_leave_by_id(TestModule, :on_leave_0)
-    assert {Callbacks, :function_0} = function.(:state, :event)
+    assert {Callbacks, :function_0} == function.(:state, :event)
   end
 
   test "on_leave_by_id :on_leave_2" do
     function = Util.on_leave_by_id(TestModule, :on_leave_2)
-    assert {Callbacks, :function_2, :state, :event} = function.(:state, :event)
+    assert {Callbacks, :function_2, :state, :event} == function.(:state, :event)
+  end
+
+  test "on_leave_by_id :on_leave_2, state = any(), event = any()" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term() do
+      function = Util.on_leave_by_id(TestModule, :on_leave_2)
+      assert {Callbacks, :function_2, state, event} == function.(state, event)
+    end
   end
 
   test "on_leave_by_id :on_leave_do" do
     function = Util.on_leave_by_id(TestModule, :on_leave_do)
-    assert {Callbacks, :function_1, {TestModule, :on_leave_do}} = function.(:state, :event)
+    assert {Callbacks, :function_1, {TestModule, :on_leave_do}} == function.(:state, :event)
   end
 
   test "on_leave_by_id :on_leave_do_state" do
     function = Util.on_leave_by_id(TestModule, :on_leave_do_state)
-    assert {Callbacks, :function_2, {TestModule, :on_leave_do_state}, :state} = function.(:state, :event)
+    assert {Callbacks, :function_2, {TestModule, :on_leave_do_state}, :state} == function.(:state, :event)
   end
 
   test "on_leave_by_id :on_leave_do_event" do
     function = Util.on_leave_by_id(TestModule, :on_leave_do_event)
-    assert {Callbacks, :function_2, {TestModule, :on_leave_do_event}, :event} = function.(:state, :event)
+    assert {Callbacks, :function_2, {TestModule, :on_leave_do_event}, :event} == function.(:state, :event)
   end
 
   test "on_leave_by_id :on_leave_do_state_event" do
     function = Util.on_leave_by_id(TestModule, :on_leave_do_state_event)
-    assert {Callbacks, :function_3, {TestModule, :on_leave_do_st_ev}, :state, :event} = function.(:state, :event)
+    assert {Callbacks, :function_3, {TestModule, :on_leave_do_st_ev}, :state, :event} == function.(:state, :event)
+  end
+
+  test "on_leave_by_id :on_leave_do_state_event, state = any(), event = any()" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term() do
+      function = Util.on_leave_by_id(TestModule, :on_leave_do_state_event)
+      assert {Callbacks, :function_3, {TestModule, :on_leave_do_st_ev}, state, event} == function.(state, event)
+    end
   end
 
   test "on_leave_by_id :one" do
@@ -437,5 +469,62 @@ defmodule EXSM.UtilTest do
     {:transition, {{:open, :open}, {:closed, :closed}, function}} =
       Util.transition_info(TransitionTestModule, :open, :close, nil)
     assert {Callbacks, :function_1, :close} == function.()
+  end
+
+  test "transition_info :closed <- :open = open_event >>> :open" do
+    {:transition, {{:closed, :closed}, {:open, :open}, function}} =
+      Util.transition_info(TransitionTestModule, :closed, :open, nil)
+    assert {Callbacks, :function_1, :open} == function.()
+  end
+
+  test "transition_info :closed <- event >>> :locked, event is :lock" do
+    {:transition, {{:closed, :closed}, {:locked, :locked}, function}} =
+      Util.transition_info(TransitionTestModule, :closed, :lock, {:state, :data})
+    assert {Callbacks, :function_2, {:state, :data}, :lock} == function.()
+  end
+
+  test "transition_info :closed <- event >>> :locked, event is :secure" do
+    {:transition, {{:closed, :closed}, {:locked, :locked}, function}} =
+      Util.transition_info(TransitionTestModule, :closed, :secure, {:state, :another_data})
+    assert {Callbacks, :function_2, {:state, :another_data}, :secure} == function.()
+  end
+
+  test "transition_info :closed <- event >>> :locked, event is any()" do
+    check all event <- StreamData.atom(:alphanumeric) do
+      assert {:no_transition, :reply} ==
+        Util.transition_info(TransitionTestModule, :closed, event, nil)
+    end
+  end
+
+  test "transition_info :locked <- {:unlock, code} >>> :closed, right code" do
+    {:transition, {{:locked, :locked}, {:closed, :closed}, function}} =
+      Util.transition_info(TransitionTestModule, :locked, {:unlock, "1234"}, %{code: "1234"})
+    assert {Callbacks, :function_2, %{code: "1234"}, "1234"} == function.()
+  end
+
+  test "transition_info :locked <- {:unlock, code} >>> :closed, wrong code" do
+    assert {:no_transition, :reply} ==
+             Util.transition_info(TransitionTestModule, :locked, {:unlock, "1234"}, %{code: "7865"})
+  end
+
+  test "transition_info :locked <- {:unlock, code} >>> :closed, no saved code" do
+    assert {:no_transition, :reply} ==
+             Util.transition_info(TransitionTestModule, :locked, {:unlock, "1234"}, %{state: :no_code})
+  end
+
+  test "transition_info any() <- any(), no_transition" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term() do
+      assert {:no_transition, :reply} ==
+               Util.transition_info(TransitionTestModule, state, event, nil)
+    end
+  end
+
+  test "transition_info :locked <- {:unlock, code} >>> :closed, code = any()" do
+    check all code <- StreamData.term() do
+      {:transition, {{:locked, :locked}, {:closed, :closed}, function}} =
+        Util.transition_info(TransitionTestModule, :locked, {:unlock, code}, %{code: code})
+      assert {Callbacks, :function_2, %{code: code}, code} == function.()
+    end
   end
 end
