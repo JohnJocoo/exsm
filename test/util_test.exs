@@ -527,4 +527,138 @@ defmodule EXSM.UtilTest do
       assert {Callbacks, :function_2, %{code: code}, code} == function.()
     end
   end
+
+  test "handle_action action = nil" do
+    check all state <- StreamData.term() do
+      assert {:noreply, state} == Util.handle_action(nil, state)
+    end
+  end
+
+  test "handle_action action returns :ok" do
+    check all state <- StreamData.term() do
+      assert {:noreply, state} ==
+               Util.handle_action(fn -> :ok end, state)
+    end
+  end
+
+  test "handle_action action returns {:noreply, state}" do
+    check all state <- StreamData.term() do
+      assert {:noreply, state} ==
+               Util.handle_action(fn -> {:noreply, state} end, nil)
+    end
+  end
+
+  test "handle_action action returns {:reply, reply}" do
+    check all state <- StreamData.term(),
+              reply <- StreamData.term() do
+      assert {:reply, reply, state} ==
+               Util.handle_action(fn -> {:reply, reply} end, state)
+    end
+  end
+
+  test "handle_action action returns {:reply, reply, state}" do
+    check all state <- StreamData.term(),
+              reply <- StreamData.term() do
+      assert {:reply, reply, state} ==
+               Util.handle_action(fn -> {:reply, reply, state} end, nil)
+    end
+  end
+
+  test "handle_action action returns {:error, error}" do
+    check all error <- StreamData.term() do
+      assert {:error, error} ==
+               Util.handle_action(fn -> {:error, error} end, nil)
+    end
+  end
+
+  test "handle_action action returns any()" do
+    check all error <- StreamData.term() do
+      assert {:error, error} ==
+               Util.handle_action(fn -> error end, nil)
+    end
+  end
+
+  test "enter_state is nil" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term() do
+      assert {:noreply, state} ==
+               Util.enter_state(nil, state, event)
+    end
+  end
+
+  test "enter_state returns :ok" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term() do
+      assert {:noreply, state} ==
+               Util.enter_state(fn _, _ -> :ok end, state, event)
+    end
+  end
+
+  test "enter_state returns {:noreply, state}" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term() do
+      assert {:noreply, state} ==
+               Util.enter_state(fn user_state, _ -> {:noreply, user_state} end, state, event)
+    end
+  end
+
+  test "enter_state returns {:error, error}" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term(),
+              error <- StreamData.term() do
+      assert {:error, error} ==
+               Util.enter_state(fn _, _ -> {:error, error} end, state, event)
+    end
+  end
+
+  test "enter_state returns any()" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term(),
+              error <- StreamData.term() do
+      assert {:error, error} ==
+               Util.enter_state(fn _, _ -> error end, state, event)
+    end
+  end
+
+  test "leave_state is nil" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term() do
+      assert {:noreply, state} ==
+               Util.leave_state(nil, state, event)
+    end
+  end
+
+  test "leave_state returns :ok" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term() do
+      assert {:noreply, state} ==
+               Util.leave_state(fn _, _ -> :ok end, state, event)
+    end
+  end
+
+  test "leave_state returns {:noreply, state}" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term() do
+      assert {:noreply, state} ==
+               Util.leave_state(fn user_state, _ -> {:noreply, user_state} end, state, event)
+    end
+  end
+
+  test "leave_state returns {:error, error}" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term(),
+              error <- StreamData.term() do
+      assert {:error, error} ==
+               Util.leave_state(fn _, _ -> {:error, error} end, state, event)
+    end
+  end
+
+  test "leave_state returns any()" do
+    check all state <- StreamData.term(),
+              event <- StreamData.term(),
+              error <- StreamData.term() do
+      assert {:error, error} ==
+               Util.leave_state(fn _, _ -> error end, state, event)
+    end
+  end
 end
