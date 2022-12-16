@@ -377,16 +377,7 @@ defmodule EXSM do
         end
       end)
     state_machine = EXSM.StateMachine.new(module, initial_states, opts)
-    case EXSM.Util.enter_state(
-           module,
-           initial_state_name,
-           EXSM.StateMachine.user_state(state_machine)) do
-      {:noreply, user_state} ->
-        EXSM.StateMachine.update_user_state(state_machine, user_state)
-
-      {:error, _} = error ->
-        error
-    end
+    # TODO enter initial states
   end
 
   defp get_initial_states(module, opts) do
