@@ -362,8 +362,21 @@ defmodule EXSM do
 
   @spec new(module(), Keyword.t()) :: EXSM.StateMachine.t() | {:error, any()}
   def new(module, opts \\ []) do
-    initial_state = %EXSM.State{name: initial_state_name} = get_initial_state(module, opts)
-    state_machine = EXSM.StateMachine.new(module, initial_state, opts)
+    initial_states =
+      get_initial_states(module, opts)
+      |> Enum.map(fn %EXSM.State{name: name} = state ->
+        case EXSM.Util.state_id_by_name(module, name) do
+          {:ok, state_id} ->
+            {state_id, state}
+
+          {:error, :not_found} ->
+            raise """
+            Metadata for state #{inspect(name)} not found
+            in module #{module}
+            """
+        end
+      end)
+    state_machine = EXSM.StateMachine.new(module, initial_states, opts)
     case EXSM.Util.enter_state(
            module,
            initial_state_name,
@@ -376,13 +389,13 @@ defmodule EXSM do
     end
   end
 
-  defp get_initial_state(module, opts) do
-    case Keyword.get(opts, :initial_state) do
+  defp get_initial_states(module, opts) do
+    case Keyword.get(opts, :initial_states) do
       nil ->
-        initial_state =
+        initial_states =
           module.__info__(:attributes)
-          |> Keyword.get(:initial_state)
-        if initial_state == nil do
+          |> Keyword.get_values(:initial_states)
+        if initial_states == [] do
           raise """
           Initial state for SM should be provided in options to
           __MODULE__.new() if there is no initial state declared like:
@@ -391,22 +404,88 @@ defmodule EXSM do
           end
           """
         end
-        initial_state
+        initial_states
 
-      initial_state_name ->
-        initial_state =
+      initial_states_names when is_list(initial_states_names) and length(initial_states_names) > 0 ->
+        names_set = MapSet.new(initial_states_names)
+        initial_states =
           EXSM.states(module)
-          |> Enum.find(fn
-            %EXSM.State{name: ^initial_state_name} -> true
-            _ -> false
+          |> Enum.filter(fn %EXSM.State{name: name} ->
+            MapSet.member?(names_set, name)
           end)
-        if initial_state == nil do
+        if initial_states == [] do
           raise """
-          No state #{inspect(initial_state_name)} exists
+          No states #{inspect(initial_states_names)} exist
           for module #{module}
           """
         end
-        initial_state
+        states_not_found =
+          MapSet.difference(
+            names_set,
+            MapSet.new(initial_states, &(&1.name))
+          )
+          |> MapSet.to_list()
+        if states_not_found != [] do
+          raise """
+          States #{inspect(states_not_found)} do not exist
+          for module #{module}
+          """
+        end
+        initial_states
     end
+  end
+
+  defp enter_all_states(module, state_ids, user_state) do
+    Enum.reduce_while(state_ids, {[], user_state}, fn state_id, {entered_states, acc_user_state} ->
+      try do
+        on_enter = EXSM.Util.on_enter_by_id(module, state_id)
+        case EXSM.Util.enter_state(on_enter, acc_user_state) do
+          {:noreply, new_user_state} ->
+            {:cont, {[state_id | entered_states], new_user_state}}
+
+          {:error, _} = error ->
+            unroll_states(module, entered_states, acc_user_state, true)
+            {:halt, error}
+        end
+      catch
+        e ->
+          unroll_states(module, entered_states, acc_user_state, false)
+          reraise e, __STACKTRACE__
+      end
+    end)
+    |> then(fn
+      {:error, _} = error ->
+        error
+
+      {ids, new_user_state} when is_list(ids) ->
+        {:ok, new_user_state}
+    end)
+  end
+
+  defp unroll_states(module, state_ids, user_state, do_reraise \\ false) do
+    Enum.reduce_while(state_ids, user_state, fn state_id, acc_user_state ->
+      try do
+        on_leave = EXSM.Util.on_leave_by_id(module, state_id)
+        case EXSM.Util.leave_state(on_leave, acc_user_state) do
+          {:noreply, new_user_state} ->
+            {:cont, new_user_state}
+
+          {:error, error} ->
+            Logger.error """
+            Error unrolling states occur #{inspect(error)},
+            ignoring it as another error is about to be returned
+            """
+            {:halt, acc_user_state}
+        end
+      catch
+        exception ->
+          if do_reraise do
+            reraise exception, __STACKTRACE__
+          else
+            Logger.error Exception.format_banner(:error, exception)
+          end
+          {:halt, acc_user_state}
+      end
+    end)
   end
 end

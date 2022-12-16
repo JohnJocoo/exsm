@@ -29,7 +29,7 @@ defmodule EXSM.Util do
   @type transition_result :: {:transition, {
                                 {EXSM.State.name(), atom()},
                                 {EXSM.State.name(), atom()},
-                                action_callback()}
+                                action_callback() | nil}
                              } |
                              {:no_transition, :ignore | :reply | :error}
 
@@ -107,12 +107,12 @@ defmodule EXSM.Util do
     apply(Module.concat(module, EXSMStatesMeta), id, [:state])
   end
 
-  @spec on_enter_by_id(module(), atom()) :: on_enter_callback()
+  @spec on_enter_by_id(module(), atom()) :: on_enter_callback() | nil
   def on_enter_by_id(module, id) do
     apply(Module.concat(module, EXSMStatesMeta), id, [:on_enter])
   end
 
-  @spec on_leave_by_id(module(), atom()) :: on_leave_callback()
+  @spec on_leave_by_id(module(), atom()) :: on_leave_callback() | nil
   def on_leave_by_id(module, id) do
     apply(Module.concat(module, EXSMStatesMeta), id, [:on_leave])
   end

@@ -9,6 +9,7 @@ defmodule EXSM.StateMachine do
                current_state_ids: %{region() => atom()},
                user_state: any()
              }
+  @enforce_keys [:module, :current_states, :current_state_ids, :user_state]
   defstruct [:module, :current_states, :current_state_ids, :user_state]
 
   @spec new(module(), [{atom(), EXSM.State.t()}], Keyword.t()) :: __MODULE__.t()
