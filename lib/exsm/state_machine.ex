@@ -2,6 +2,9 @@ defmodule EXSM.StateMachine do
   @moduledoc false
 
   @type region :: atom()
+  @type new_state_machine_opts :: [{:user_state, EXSM.State.user_state()} |
+                                   {:initial_states, [EXSM.State.name()]}] |
+                                  []
 
   @type t :: %__MODULE__{
                module: module(),
@@ -12,15 +15,17 @@ defmodule EXSM.StateMachine do
   @enforce_keys [:module, :current_states, :current_state_ids, :user_state]
   defstruct [:module, :current_states, :current_state_ids, :user_state]
 
-  @spec new(module(), [{atom(), EXSM.State.t()}], Keyword.t()) :: __MODULE__.t()
+  @spec new(module(), [{atom(), EXSM.State.t()}], new_state_machine_opts()) :: __MODULE__.t()
   def new(module, initial_states, opts) when is_atom(module) and length(initial_states) > 0 do
     repeated_regions =
       Enum.frequencies_by(initial_states, fn {_, %EXSM.State{region: region}} -> region end)
       |> Enum.filter(fn {_, count} -> count > 1 end)
     case repeated_regions do
       [] ->
-        states_map = Map.new(initial_states, fn {_, %EXSM.State{region: region} = state} -> {region, state} end)
-        ids_map = Map.new(initial_states, fn {id, %EXSM.State{region: region}} -> {region, id} end)
+        states_map = Map.new(initial_states,
+          fn {_, %EXSM.State{region: region} = state} -> {region, state} end)
+        ids_map = Map.new(initial_states,
+          fn {id, %EXSM.State{region: region}} -> {region, id} end)
         %__MODULE__{
           module: module,
           current_states: states_map,
@@ -36,8 +41,10 @@ defmodule EXSM.StateMachine do
             {_, %EXSM.State{}} -> false
           end)
           |> Enum.map(fn {_, %EXSM.State{name: name}} -> name end)
-        raise(ArgumentError,
-          "initial states in the same region #{region} found #{inspect(repeated_states)} for module #{module}")
+        raise(ArgumentError, """
+                initial states in the same region #{region} found
+                #{inspect(repeated_states)} for module #{module}
+                """)
     end
   end
 

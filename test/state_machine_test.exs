@@ -46,7 +46,7 @@ defmodule EXSM.StateMachineTest do
     state_2 = %State{name: :empty, region: :player}
     state_3 = %State{name: :failed, region: :main}
     assert_raise(ArgumentError,
-                 ~r/initial states in the same region .?main found .*(normal|failed).*(normal|failed).*TestM.*/,
+                 ~r/initial states in the same region .?main found(\n| ).*(normal|failed).*(normal|failed).*TestM.*/,
                  fn -> StateMachine.new(TestM, [{:normal, state_1}, {:empty, state_2}, {:failed, state_3}], []) end)
   end
 

@@ -1,5 +1,7 @@
 defmodule EXSMTest do
   use ExUnit.Case
+  use ExUnitProperties
+
   doctest EXSM
 
   defmodule StatesNone do
@@ -17,6 +19,24 @@ defmodule EXSMTest do
 
     state :one
     state :two
+    state :three
+  end
+
+  defmodule StatesDefaultOne do
+    use EXSM
+
+    state :one, do: initial true
+    state :two
+    state :three
+  end
+
+  defmodule StatesDefaultTwo do
+    use EXSM
+
+    state :one
+    state :two do
+      initial true
+    end
     state :three
   end
 
@@ -79,5 +99,56 @@ defmodule EXSMTest do
              %EXSM.State{name: :two},
              %EXSM.State{name: :three}
            ]) == MapSet.new(EXSM.states(StatesThree))
+  end
+
+  test "new with default initial state StatesDefaultOne" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(StatesDefaultOne)
+    assert %EXSM.State{name: :one, initial?: true} == EXSM.StateMachine.current_state(state_machine)
+    assert [%EXSM.State{name: :one, initial?: true}] == EXSM.StateMachine.all_current_states(state_machine)
+    assert :one == EXSM.StateMachine.current_state_id(state_machine)
+  end
+
+  test "new with default initial state StatesDefaultTwo" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(StatesDefaultTwo)
+    assert %EXSM.State{name: :two, initial?: true} == EXSM.StateMachine.current_state(state_machine)
+    assert [%EXSM.State{name: :two, initial?: true}] == EXSM.StateMachine.all_current_states(state_machine)
+    assert :two == EXSM.StateMachine.current_state_id(state_machine)
+  end
+
+  test "new with initial state :three StatesDefaultTwo" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(StatesDefaultTwo, initial_states: [:three])
+    assert %EXSM.State{name: :three, initial?: false} == EXSM.StateMachine.current_state(state_machine)
+    assert [%EXSM.State{name: :three, initial?: false}] == EXSM.StateMachine.all_current_states(state_machine)
+    assert :three == EXSM.StateMachine.current_state_id(state_machine)
+  end
+
+  test "new with initial state :one StatesThree" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(StatesThree, initial_states: [:one])
+    assert %EXSM.State{name: :one} == EXSM.StateMachine.current_state(state_machine)
+    assert [%EXSM.State{name: :one}] == EXSM.StateMachine.all_current_states(state_machine)
+    assert :one == EXSM.StateMachine.current_state_id(state_machine)
+  end
+
+  test "new with initial state :two StatesThree" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(StatesThree, initial_states: [:two])
+    assert %EXSM.State{name: :two} == EXSM.StateMachine.current_state(state_machine)
+    assert [%EXSM.State{name: :two}] == EXSM.StateMachine.all_current_states(state_machine)
+    assert :two == EXSM.StateMachine.current_state_id(state_machine)
+  end
+
+  test "new with initial state does not exist StatesThree" do
+    check all state <- StreamData.atom(:alphanumeric) do
+      assert_raise(ArgumentError,
+        ~r/No states .*#{state}.* exist(\n| )for module .*StatesThree/,
+        fn -> {:ok, _} = EXSM.new(StatesThree, initial_states: [state]) end)
+    end
+  end
+
+  test "new without initial state and with no default one StatesOne" do
+    check all state <- StreamData.atom(:alphanumeric) do
+      assert_raise(ArgumentError,
+        ~r/No states .*#{state}.* exist(\n| )for module .*StatesThree/,
+        fn -> {:ok, _} = EXSM.new(StatesThree, initial_states: [state]) end)
+    end
   end
 end

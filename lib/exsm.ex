@@ -3,6 +3,8 @@ defmodule EXSM do
   Documentation for `EXSM`.
   """
 
+  require Logger
+
   defmacro __using__(opts) do
     default_transition_values = [:none, :ignore, :reply, :error]
     default_transition_policy = Keyword.get(opts, :default_transition, :reply)
@@ -20,7 +22,7 @@ defmodule EXSM do
 
       Module.register_attribute(__MODULE__, :states, accumulate: true, persist: true)
       Module.register_attribute(__MODULE__, :states_meta, accumulate: true)
-      Module.register_attribute(__MODULE__, :initial_state, persist: true)
+      Module.register_attribute(__MODULE__, :initial_states, accumulate: true, persist: true)
       Module.put_attribute(__MODULE__, :default_transition_policy, unquote(default_transition_policy))
       Module.put_attribute(__MODULE__, :states_meta_defined, false)
 
@@ -178,14 +180,17 @@ defmodule EXSM do
     quote do
       states = Module.get_attribute(__MODULE__, :states)
       if  states != nil and states != [] and List.first(states).initial? do
-        initial_state = Module.get_attribute(__MODULE__, :initial_state)
-        if initial_state == nil do
-          Module.put_attribute(__MODULE__, :initial_state, List.first(states))
+        %EXSM.State{region: region} = state = List.first(states)
+        initial_state_region =
+          Module.get_attribute(__MODULE__, :initial_states)
+          |> Enum.find(fn %EXSM.State{region: initial_region} -> initial_region == region end)
+        if initial_state_region == nil do
+          Module.put_attribute(__MODULE__, :initial_states, state)
         else
           raise """
           Only one state can be marked as initial.
-          First state #{inspect(initial_state)}
-          Second #{inspect(List.first(states))}
+          First state #{inspect(state)}
+          Second #{inspect(state)}
           """
         end
       end
@@ -360,7 +365,8 @@ defmodule EXSM do
     |> List.flatten()
   end
 
-  @spec new(module(), Keyword.t()) :: EXSM.StateMachine.t() | {:error, any()}
+  @spec new(module(), EXSM.StateMachine.new_state_machine_opts()) ::
+          {:ok, EXSM.StateMachine.t()} | {:error, any()}
   def new(module, opts \\ []) do
     initial_states =
       get_initial_states(module, opts)
@@ -377,7 +383,14 @@ defmodule EXSM do
         end
       end)
     state_machine = EXSM.StateMachine.new(module, initial_states, opts)
-    # TODO enter initial states
+    {state_ids, _} = Enum.unzip(initial_states)
+    case enter_all_states(module, state_ids, EXSM.StateMachine.user_state(state_machine)) do
+      {:ok, updated_user_state} ->
+        {:ok, EXSM.StateMachine.update_user_state(state_machine, updated_user_state)}
+
+      {:error, _} = error ->
+        error
+    end
   end
 
   defp get_initial_states(module, opts) do
@@ -386,6 +399,7 @@ defmodule EXSM do
         initial_states =
           module.__info__(:attributes)
           |> Keyword.get_values(:initial_states)
+          |> List.flatten()
         if initial_states == [] do
           raise """
           Initial state for SM should be provided in options to
@@ -405,7 +419,7 @@ defmodule EXSM do
             MapSet.member?(names_set, name)
           end)
         if initial_states == [] do
-          raise """
+          raise ArgumentError, """
           No states #{inspect(initial_states_names)} exist
           for module #{module}
           """
@@ -417,7 +431,7 @@ defmodule EXSM do
           )
           |> MapSet.to_list()
         if states_not_found != [] do
-          raise """
+          raise ArgumentError, """
           States #{inspect(states_not_found)} do not exist
           for module #{module}
           """
@@ -431,8 +445,8 @@ defmodule EXSM do
       try do
         on_enter = EXSM.Util.on_enter_by_id(module, state_id)
         case EXSM.Util.enter_state(on_enter, acc_user_state) do
-          {:noreply, new_user_state} ->
-            {:cont, {[state_id | entered_states], new_user_state}}
+          {:noreply, updated_user_state} ->
+            {:cont, {[state_id | entered_states], updated_user_state}}
 
           {:error, _} = error ->
             unroll_states(module, entered_states, acc_user_state, true)
@@ -453,7 +467,7 @@ defmodule EXSM do
     end)
   end
 
-  defp unroll_states(module, state_ids, user_state, do_reraise \\ false) do
+  defp unroll_states(module, state_ids, user_state, do_reraise) do
     Enum.reduce_while(state_ids, user_state, fn state_id, acc_user_state ->
       try do
         on_leave = EXSM.Util.on_leave_by_id(module, state_id)
