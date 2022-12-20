@@ -3,17 +3,19 @@ defmodule EXSM.StateMachine do
 
   @type region :: atom()
   @type new_state_machine_opts :: [{:user_state, EXSM.State.user_state()} |
-                                   {:initial_states, [EXSM.State.name()]}] |
+                                   {:initial_states, [EXSM.State.name()]} |
+                                   {:regions, [region()]}] |
                                   []
 
   @type t :: %__MODULE__{
                module: module(),
                current_states: %{region() => EXSM.State.t()},
                current_state_ids: %{region() => atom()},
-               user_state: any()
+               user_state: any(),
+               regions: [region()]
              }
   @enforce_keys [:module, :current_states, :current_state_ids, :user_state]
-  defstruct [:module, :current_states, :current_state_ids, :user_state]
+  defstruct [:module, :current_states, :current_state_ids, :user_state, regions: []]
 
   @spec new(module(), [{atom(), EXSM.State.t()}], new_state_machine_opts()) :: __MODULE__.t()
   def new(module, initial_states, opts) when is_atom(module) and length(initial_states) > 0 do
@@ -30,7 +32,8 @@ defmodule EXSM.StateMachine do
           module: module,
           current_states: states_map,
           current_state_ids: ids_map,
-          user_state: Keyword.get(opts, :user_state)
+          user_state: Keyword.get(opts, :user_state),
+          regions: Keyword.get(opts, :regions, [nil])
         }
 
       _ ->

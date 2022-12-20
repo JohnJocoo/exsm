@@ -151,4 +151,16 @@ defmodule EXSMTest do
         fn -> {:ok, _} = EXSM.new(StatesThree, initial_states: [state]) end)
     end
   end
+
+  test "new with user_state" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(StatesDefaultOne, user_state: {:state, "initial"})
+    assert {:state, "initial"} == EXSM.StateMachine.user_state(state_machine)
+  end
+
+  test "new with user_state random" do
+    check all state <- StreamData.atom(:alphanumeric) do
+      {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(StatesDefaultOne, user_state: state)
+      assert state == EXSM.StateMachine.user_state(state_machine)
+    end
+  end
 end
