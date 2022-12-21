@@ -118,6 +118,10 @@ defmodule EXSM.Util do
   end
 
   @spec transition_info(module(), EXSM.State.name(), event(), EXSM.State.user_state()) :: transition_result()
+  def transition_info(module, %EXSM.State{name: name}, event, user_state) do
+    transition_info(module, name, event, user_state)
+  end
+
   def transition_info(module, from, event, user_state) do
     apply(Module.concat(module, EXSMTransitions), :handle_event, [from, event, user_state])
   end

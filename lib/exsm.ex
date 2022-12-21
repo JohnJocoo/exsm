@@ -5,9 +5,19 @@ defmodule EXSM do
 
   require Logger
 
+  @type reply :: any()
+  @type ok_details :: [{:region, atom()}] | []
+  @type error_details :: [{:rollback_error, any()} |
+                          {:region, atom()} |
+                          {:state_machine, EXSM.StateMachine.t()} |
+                          {:reply, reply()}
+                         ] | []
+
+  # opts:
+  #   no_transition: :reply | :ignore | :error | :no_function_match
   defmacro __using__(opts) do
-    default_transition_values = [:none, :ignore, :reply, :error]
-    default_transition_policy = Keyword.get(opts, :default_transition, :reply)
+    default_transition_values = [:no_function_match, :ignore, :reply, :error]
+    default_transition_policy = Keyword.get(opts, :no_transition, :reply)
 
     if default_transition_policy not in default_transition_values do
       raise """
@@ -342,7 +352,7 @@ defmodule EXSM do
       EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "_inject_default_transition")
 
       case Module.get_attribute(EXSM.Util.parent_module(__MODULE__), :default_transition_policy) do
-        :none ->
+        :no_function_match ->
           :ok
 
         :ignore ->
@@ -369,6 +379,18 @@ defmodule EXSM do
   @spec new(module(), EXSM.StateMachine.new_state_machine_opts()) ::
           {:ok, EXSM.StateMachine.t()} | {:error, any()}
   def new(module, opts \\ []) when is_atom(module) do
+    create(module, opts)
+  end
+
+  @spec process_event(module(), EXSM.StateMachine.t(), EXSM.Util.event()) ::
+          {:ok, EXSM.StateMachine.t(), ok_details()} |
+          {:ok, EXSM.StateMachine.t(), :no_transition | reply(), ok_details()} |
+          {:error, :no_transition | any(), error_details()}
+  def process_event(module, state_machine, event) when is_atom(module) do
+    handle_event(module, state_machine, event)
+  end
+
+  defp create(module, opts) do
     initial_states =
       get_initial_states(module, opts)
       |> Enum.map(fn %EXSM.State{name: name} = state ->
@@ -398,11 +420,6 @@ defmodule EXSM do
       {:error, _} = error ->
         error
     end
-  end
-
-  # {:ok, state_machine, details()} | {:ok, state_machine, :no_transition | reply(), details()} | {:error, :no_transition | error(), details()}
-  def process_event(module, state_machine, event) when is_atom(module) do
-    handle_event(module, state_machine, event)
   end
 
   defp get_regions(module) do
@@ -537,7 +554,7 @@ defmodule EXSM do
     %EXSM.StateMachine{regions: regions} = state_machine
     user_state = EXSM.StateMachine.user_state(state_machine)
     Enum.reduce_while(regions, nil, fn region, _ ->
-      from = EXSM.StateMachine.current_state(state_machine, region)
+      %EXSM.State{name: from} = EXSM.StateMachine.current_state(state_machine, region)
       case EXSM.Util.transition_info(module, from, event, user_state) do
         {:transition, transition} ->
           {:halt, {:transition, region, transition}}
@@ -596,7 +613,12 @@ defmodule EXSM do
     on_enter = EXSM.Util.on_enter_by_id(module, to_id)
     case EXSM.Util.enter_state(on_enter, user_state, event) do
       {:noreply, updated_user_state} ->
-        {:ok, EXSM.StateMachine.update_current_state(state_machine, updated_user_state, region)}
+        new_state = EXSM.Util.state_by_id(module, to_id)
+        update_state_machine =
+          state_machine
+          |> EXSM.StateMachine.update_user_state(updated_user_state)
+          |> EXSM.StateMachine.update_current_state({to_id, new_state}, region)
+        {:ok, update_state_machine}
 
       {:error, error} ->
         case enter_state_rollback(module, state_machine, event, region, from, user_state) do
@@ -613,7 +635,12 @@ defmodule EXSM do
     on_enter = EXSM.Util.on_enter_by_id(module, state_id)
     case EXSM.Util.enter_state(on_enter, user_state, event) do
       {:noreply, updated_user_state} ->
-        {:ok, EXSM.StateMachine.update_current_state(state_machine, updated_user_state, region)}
+        new_state = EXSM.Util.state_by_id(module, state_id)
+        update_state_machine =
+          state_machine
+          |> EXSM.StateMachine.update_user_state(updated_user_state)
+          |> EXSM.StateMachine.update_current_state({state_id, new_state}, region)
+        {:ok, update_state_machine}
 
       {:error, _} = error ->
         error
