@@ -2,6 +2,8 @@ defmodule EXSMTest do
   use ExUnit.Case
   use ExUnitProperties
 
+  alias EXSM.Test.Callbacks
+
   doctest EXSM
 
   defmodule StatesNone do
@@ -107,6 +109,24 @@ defmodule EXSMTest do
       :two <- :increment >>> :three
       :three <- :decrement >>> :two
       :two <- :decrement >>> :one
+    end
+  end
+
+  defmodule TransitionMatchOrder do
+    use EXSM
+
+    state :one
+    state :two
+    state :three
+    state :dunno
+
+    transitions do
+      :one <- _event >>> :dunno
+      :one <- :increment >>> :two
+      :two <- :increment >>> :three
+      :two <- _event >>> :dunno
+      :two <- {:substruct, _value} >>> :dunno
+      :two <- {:substruct, 1} >>> :one
     end
   end
 
@@ -327,5 +347,47 @@ defmodule EXSMTest do
       EXSM.process_event(TransitionSimpleFour, state_machine, :decrement)
     assert %EXSM.State{initial?: true, name: :one} == EXSM.StateMachine.current_state(state_machine)
     assert :one == EXSM.StateMachine.current_state_id(state_machine)
+  end
+
+  test "process_event match order generic event clause hides everything below" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(TransitionMatchOrder, initial_states: [:one])
+    assert %EXSM.State{name: :one} == EXSM.StateMachine.current_state(state_machine)
+    {:ok, %EXSM.StateMachine{} = updated_state_machine, []} =
+      EXSM.process_event(TransitionMatchOrder, state_machine, :increment)
+    assert %EXSM.State{name: :dunno} == EXSM.StateMachine.current_state(updated_state_machine)
+
+    check all event <- StreamData.term() do
+      {:ok, %EXSM.StateMachine{} = updated_state_machine, []} =
+        EXSM.process_event(TransitionMatchOrder, state_machine, event)
+      assert %EXSM.State{name: :dunno} == EXSM.StateMachine.current_state(updated_state_machine)
+    end
+  end
+
+  test "process_event match order generic event clause at bottom" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(TransitionMatchOrder, initial_states: [:two])
+    assert %EXSM.State{name: :two} == EXSM.StateMachine.current_state(state_machine)
+    {:ok, %EXSM.StateMachine{} = updated_state_machine, []} =
+      EXSM.process_event(TransitionMatchOrder, state_machine, :increment)
+    assert %EXSM.State{name: :three} == EXSM.StateMachine.current_state(updated_state_machine)
+
+    check all event <- StreamData.term() do
+      {:ok, %EXSM.StateMachine{} = updated_state_machine, []} =
+        EXSM.process_event(TransitionMatchOrder, state_machine, event)
+      assert %EXSM.State{name: :dunno} == EXSM.StateMachine.current_state(updated_state_machine)
+    end
+  end
+
+  test "process_event match order generic event clause hides everything below, tuple" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(TransitionMatchOrder, initial_states: [:two])
+    assert %EXSM.State{name: :two} == EXSM.StateMachine.current_state(state_machine)
+    {:ok, %EXSM.StateMachine{} = updated_state_machine, []} =
+      EXSM.process_event(TransitionMatchOrder, state_machine, {:substruct, 1})
+    assert %EXSM.State{name: :dunno} == EXSM.StateMachine.current_state(updated_state_machine)
+
+    check all event <- StreamData.term() do
+      {:ok, %EXSM.StateMachine{} = updated_state_machine, []} =
+        EXSM.process_event(TransitionMatchOrder, state_machine, {:substruct, event})
+      assert %EXSM.State{name: :dunno} == EXSM.StateMachine.current_state(updated_state_machine)
+    end
   end
 end

@@ -195,7 +195,7 @@ defmodule EXSM.Macro do
     end)
   end
 
-  def assert_block_variables(arg, _, _) when not is_tuple(arg), do: :ok
+  def assert_block_variables(arg, _, _), do: :ok
 
   def assert_state_exists(state_name, states) do
     if not Enum.any?(states, fn {key, _} -> key == state_name end) do
