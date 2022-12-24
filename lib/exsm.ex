@@ -317,12 +317,16 @@ defmodule EXSM do
     EXSM.Util.assert_only_allowed_keywords(opts, [:user_state], "action")
     EXSM.Macro.assert_action_variables(expression)
     expression_ast = Elixir.Macro.escape(expression)
+    user_state_ast =
+      Keyword.get(opts, :user_state, {:_, [], nil})
+      |> Elixir.Macro.escape()
 
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :transitions, "transitions", "action")
 
       Module.put_attribute(__MODULE__, :current_transition_keyword, {:action, true})
       Module.put_attribute(__MODULE__, :current_transition_keyword, {:action_block, unquote(expression_ast)})
+      Module.put_attribute(__MODULE__, :current_transition_keyword, {:action_user_state, unquote(user_state_ast)})
     end
   end
 
@@ -337,10 +341,9 @@ defmodule EXSM do
         event_ast = EXSM.Macro.transition_event_from_keyword(transition_keyword, :exsm_event)
         when_ast = EXSM.Macro.transition_when_from_keyword(transition_keyword)
         states = Module.get_attribute(EXSM.Util.parent_module(__MODULE__), :states_meta)
-        action_ast = EXSM.Macro.transition_action_from_keyword(transition_keyword, :state, :exsm_event, states)
-        user_state = {:state, [], nil}
+        action_ast = EXSM.Macro.transition_action_from_keyword(transition_keyword, :exsm_event, states)
 
-        def handle_event(unquote(from_ast), unquote(event_ast), unquote(user_state)) when unquote(when_ast) do
+        def handle_event(unquote(from_ast), unquote(event_ast), _) when unquote(when_ast) do
           unquote(action_ast)
         end
       end

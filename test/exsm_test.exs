@@ -2,8 +2,6 @@ defmodule EXSMTest do
   use ExUnit.Case
   use ExUnitProperties
 
-  alias EXSM.Test.Callbacks
-
   doctest EXSM
 
   defmodule StatesNone do

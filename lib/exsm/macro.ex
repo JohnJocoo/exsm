@@ -107,7 +107,7 @@ defmodule EXSM.Macro do
     end
   end
 
-  def transition_action_from_keyword(keyword, user_state_param, event_param, states_meta) do
+  def transition_action_from_keyword(keyword, event_param, states_meta) do
     assert_has_keyword(keyword, :to, "transition", ">>> dest_state",
       ":stopped <- :play >>> :playing")
     state_from = Keyword.fetch!(keyword, :from)
@@ -125,20 +125,16 @@ defmodule EXSM.Macro do
 
     if Keyword.has_key?(keyword, :action) do
       quote do
-        unquote(inject_action(keyword, user_state_param, event_param))
+        unquote(inject_action(keyword, event_param))
 
         {:transition, {
           {unquote(state_from), unquote(id_from)},
           {unquote(state_to), unquote(id_to)},
-          _exsm_action
+          exsm_action
         }}
       end
     else
       quote do
-        unquote({:=, [], [
-          {:_user_state_unused, [], nil},
-          {user_state_param, [], nil}
-        ]})
         {:transition, {
           {unquote(state_from), unquote(id_from)},
           {unquote(state_to), unquote(id_to)},
@@ -163,7 +159,7 @@ defmodule EXSM.Macro do
   def assert_action_variables(block_ast) do
     assert_block_variables(
       block_ast,
-      [:exsm_event, :_user_state_unused, :_exsm_action],
+      [:exsm_event, :exsm_action],
       "action"
     )
   end
@@ -171,7 +167,7 @@ defmodule EXSM.Macro do
   def assert_guard_variables(block_ast) do
     assert_block_variables(
       block_ast,
-      [:exsm_event, :_user_state_unused, :_exsm_action],
+      [:exsm_event],
       "guard"
     )
   end
@@ -195,7 +191,7 @@ defmodule EXSM.Macro do
     end)
   end
 
-  def assert_block_variables(arg, _, _), do: :ok
+  def assert_block_variables(_, _, _), do: :ok
 
   def assert_state_exists(state_name, states) do
     if not Enum.any?(states, fn {key, _} -> key == state_name end) do
@@ -246,33 +242,29 @@ defmodule EXSM.Macro do
     """, meta
   end
 
-  defp inject_action(keyword, user_state_param, event_param) do
+  defp inject_action(keyword, event_param) do
     if Keyword.has_key?(keyword, :action_function) do
-      inject_action_function(keyword, user_state_param, event_param)
+      inject_action_function(keyword, event_param)
     else
-      inject_action_block(keyword, user_state_param, event_param)
+      inject_action_block(keyword)
     end
   end
 
-  defp inject_action_function(keyword, user_state_param, event_param) do
+  defp inject_action_function(keyword, event_param) do
     quote do
-      _exsm_action = fn ->
+      exsm_action = fn user_state ->
         _function = unquote(Keyword.fetch!(keyword, :action_function))
         _function.(
-          unquote({user_state_param, [], nil}),
+          user_state,
           unquote({event_param, [], nil})
         )
       end
     end
   end
 
-  defp inject_action_block(keyword, user_state_param, _event_param) do
+  defp inject_action_block(keyword) do
     quote do
-      unquote({:=, [], [
-        {:_user_state_unused, [], nil},
-        {user_state_param, [], nil}
-      ]})
-      _exsm_action = fn ->
+      exsm_action = fn unquote(Keyword.fetch!(keyword, :action_user_state)) ->
         unquote(Keyword.fetch!(keyword, :action_block))
       end
     end

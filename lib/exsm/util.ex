@@ -25,7 +25,7 @@ defmodule EXSM.Util do
                                 {:error, any()}
   @type on_enter_callback :: (EXSM.State.user_state(), event() -> on_enter_result())
   @type on_leave_callback :: (EXSM.State.user_state(), event() -> on_leave_result())
-  @type action_callback :: ( -> action_result())
+  @type action_callback :: (EXSM.State.user_state() -> action_result())
   @type transition_result :: {:transition, {
                                 {EXSM.State.name(), atom()},
                                 {EXSM.State.name(), atom()},
@@ -130,7 +130,7 @@ defmodule EXSM.Util do
   def handle_action(nil, user_state), do: {:noreply, user_state}
 
   def handle_action(action, user_state) do
-    case action.() do
+    case action.(user_state) do
       :ok -> {:noreply, user_state}
       {:noreply, new_user_state} -> {:noreply, new_user_state}
       {:reply, reply} -> {:reply, reply, user_state}
