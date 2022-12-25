@@ -634,9 +634,9 @@ defmodule EXSM do
     end
   end
 
-  defp enter_state_rollback(module, state_machine, event, region, {_, state_id}, user_state) do
+  defp enter_state_rollback(module, state_machine, _event, region, {_, state_id}, user_state) do
     on_enter = EXSM.Util.on_enter_by_id(module, state_id)
-    case EXSM.Util.enter_state(on_enter, user_state, event) do
+    case EXSM.Util.enter_state(on_enter, user_state, nil) do
       {:noreply, updated_user_state} ->
         new_state = EXSM.Util.state_by_id(module, state_id)
         update_state_machine =
