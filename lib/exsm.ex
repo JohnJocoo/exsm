@@ -342,8 +342,9 @@ defmodule EXSM do
         when_ast = EXSM.Macro.transition_when_from_keyword(transition_keyword)
         states = Module.get_attribute(EXSM.Util.parent_module(__MODULE__), :states_meta)
         action_ast = EXSM.Macro.transition_action_from_keyword(transition_keyword, :exsm_event, states)
+        user_state_ast = EXSM.Macro.transition_user_state_from_keyword(transition_keyword)
 
-        def handle_event(unquote(from_ast), unquote(event_ast), _) when unquote(when_ast) do
+        def handle_event(unquote(from_ast), unquote(event_ast), unquote(user_state_ast)) when unquote(when_ast) do
           unquote(action_ast)
         end
       end

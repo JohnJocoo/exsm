@@ -130,9 +130,8 @@ defmodule EXSM.UtilTest do
         action user_state: state do
           Callbacks.function_2(state, event)
         end
-      # TODO support checking user_state in guard
-      #:locked <- {:unlock, code} >>> :closed when code == state.code
-      #  action [user_state: state], do: Callbacks.function_2(state, code)
+      :locked <- {:unlock, code} >>> :closed when [user_state: state] |> code == state.code
+        action [user_state: state], do: Callbacks.function_2(state, code)
     end
   end
 
@@ -502,7 +501,6 @@ defmodule EXSM.UtilTest do
     end
   end
 
-  @tag :skip
   test "transition_info :locked <- {:unlock, code} >>> :closed, right code" do
     {:transition, {{:locked, :locked}, {:closed, :closed}, function}} =
       Util.transition_info(TransitionTestModule, :locked, {:unlock, "1234"}, %{code: "1234"})
@@ -527,8 +525,7 @@ defmodule EXSM.UtilTest do
                Util.transition_info(TransitionTestModule, state, event, nil)
     end
   end
-
-  @tag :skip
+  
   test "transition_info :locked <- {:unlock, code} >>> :closed, code = any()" do
     check all code <- StreamData.term() do
       {:transition, {{:locked, :locked}, {:closed, :closed}, function}} =

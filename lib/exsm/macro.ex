@@ -144,6 +144,16 @@ defmodule EXSM.Macro do
     end
   end
 
+  def transition_user_state_from_keyword(transition_keyword) do
+    transition_keyword
+    |> Keyword.get(:when_opts, [])
+    |> Keyword.get(:user_state, nil)
+    |> then(fn
+         nil -> {:_, [], nil}
+         name -> name
+       end)
+  end
+
   def assert_in_block(module, attribute, block_name, current_function) do
     if not Module.has_attribute?(module, attribute) do
       raise """
@@ -226,9 +236,10 @@ defmodule EXSM.Macro do
     [{:left_to, left} | [{:to, to} | acc]]
   end
 
-  defp parse_transition({:when, _, [left, guard]}, acc) do
+  defp parse_transition({:when, _, [left, guard_definition]}, acc) do
+    {guard, guard_opts} = parse_guard(guard_definition)
     assert_guard_variables(guard)
-    parse_transition(left, [{:when, guard} | acc])
+    parse_transition(left, [{:when_opts, guard_opts} | [{:when, guard} | acc]])
   end
 
   defp parse_transition({:=, _, [_, right]} = ast, acc) do
@@ -240,6 +251,27 @@ defmodule EXSM.Macro do
     Unknown operator or statement #{inspect(op)}
     With args #{inspect(args)}
     """, meta
+  end
+
+  defp parse_guard({:|>, _, [opts, guard_part]}) when is_list(opts) do
+    {guard_part, opts}
+  end
+
+  defp parse_guard({op, meta, nil}) do
+    {{op, meta, nil}, []}
+  end
+
+  defp parse_guard({op, meta, args}) do
+    {filtered_args, opts} = Enum.reduce(args, {[], []},
+      fn arg, {args_acc, opts_acc} ->
+        {guard_part, opts} = parse_guard(arg)
+        {[guard_part | args_acc], opts ++ opts_acc}
+      end)
+    {{op, meta, Enum.reverse(filtered_args)}, opts}
+  end
+
+  defp parse_guard(other) do
+    {other, []}
   end
 
   defp inject_action(keyword, event_param) do
