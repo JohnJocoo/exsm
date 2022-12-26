@@ -393,6 +393,12 @@ defmodule EXSM do
     handle_event(module, state_machine, event)
   end
 
+  @spec terminate(module(), EXSM.StateMachine.t()) ::
+          :ok | {:error, [{EXSM.StateMachine.region(), any()}]}
+  def terminate(module, state_machine) when is_atom(module) do
+    leave_all(module, state_machine)
+  end
+
   defp create(module, opts) do
     initial_states =
       get_initial_states(module, opts)
@@ -666,6 +672,25 @@ defmodule EXSM do
       {:error, _} = error ->
         error
     end
+  end
+
+  defp leave_all(module, %EXSM.StateMachine{module: module, regions: regions} = state_machine) do
+    user_state = EXSM.StateMachine.user_state(state_machine)
+    Enum.reduce(regions, {user_state, []}, fn region, {user_state, acc} ->
+      on_leave = EXSM.Util.on_leave_by_id(module, EXSM.StateMachine.current_state_id(state_machine, region))
+      case EXSM.Util.leave_state(on_leave, user_state) do
+        {:noreply, updated_user_state} ->
+          {updated_user_state, acc}
+
+        {:error, error} ->
+          {user_state, [{region, error} | acc]}
+      end
+    end)
+    |> then(fn {_, errors} -> errors end)
+    |> then(fn
+         [] -> :ok
+         errors when is_list(errors) -> {:error, errors}
+       end)
   end
 
   defp add_detail_not_nil(details, _key, nil), do: details

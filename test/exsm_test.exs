@@ -388,4 +388,10 @@ defmodule EXSMTest do
       assert %EXSM.State{name: :dunno} == EXSM.StateMachine.current_state(updated_state_machine)
     end
   end
+
+  test "terminate StatesDefaultOne" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(StatesDefaultOne)
+    assert [%EXSM.State{name: :one, initial?: true}] == EXSM.StateMachine.all_current_states(state_machine)
+    assert :ok == EXSM.terminate(StatesDefaultOne, state_machine)
+  end
 end

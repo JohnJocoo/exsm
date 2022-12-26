@@ -356,4 +356,73 @@ defmodule EXSMMockTest do
            ] == call_history(Callbacks)
                 |> call_only()
   end
+
+  test_with_callbacks_mock "terminate with on_leave" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(TransitionCallbacks,
+                                                    initial_states: [:one],
+                                                    user_state: %TransitionCallbacks{})
+    assert %EXSM.State{name: :one} == EXSM.StateMachine.current_state(state_machine)
+    assert %TransitionCallbacks{history: [enter: :one]} == EXSM.StateMachine.user_state(state_machine)
+
+    assert :ok == EXSM.terminate(TransitionCallbacks, state_machine)
+
+    assert [{Callbacks, :enter_state_noreply, [:one, %TransitionCallbacks{}, nil,
+             %TransitionCallbacks{history: [{:enter, :one}]}]},
+             {Callbacks, :leave_state_noreply, [:one, %TransitionCallbacks{history: [enter: :one]}, nil,
+               %TransitionCallbacks{history: [{:leave, :one}, {:enter, :one}]}]}
+           ] ==
+             call_history(Callbacks)
+             |> call_only()
+  end
+
+  test_with_callbacks_mock "terminate with on_leave error" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(TransitionCallbacks,
+                                                    initial_states: [:cant_leave],
+                                                    user_state: %TransitionCallbacks{})
+    assert %EXSM.State{name: :cant_leave} == EXSM.StateMachine.current_state(state_machine)
+    assert %TransitionCallbacks{history: [enter: :cant_leave]} == EXSM.StateMachine.user_state(state_machine)
+
+    assert {:error, [{nil, :test_leave}]} == EXSM.terminate(TransitionCallbacks, state_machine)
+
+    assert [{Callbacks, :enter_state_noreply, [:cant_leave, %TransitionCallbacks{}, nil,
+             %TransitionCallbacks{history: [{:enter, :cant_leave}]}]},
+             {Callbacks, :leave_state_error, [:cant_leave, %TransitionCallbacks{history: [enter: :cant_leave]}, nil]}
+           ] ==
+             call_history(Callbacks)
+             |> call_only()
+  end
+
+  test_with_callbacks_mock "terminate callbacks order after successful transition" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(TransitionCallbacks,
+                                                    initial_states: [:one],
+                                                    user_state: %TransitionCallbacks{})
+    assert %EXSM.State{name: :one} == EXSM.StateMachine.current_state(state_machine)
+    assert %TransitionCallbacks{history: [enter: :one]} == EXSM.StateMachine.user_state(state_machine)
+
+    {:ok, %EXSM.StateMachine{} = updated_state_machine, []} =
+      EXSM.process_event(TransitionCallbacks, state_machine, :increment)
+    assert %EXSM.State{name: :two} == EXSM.StateMachine.current_state(updated_state_machine)
+    assert %TransitionCallbacks{history: [enter: :two, action: :one_two, leave: :one, enter: :one]} ==
+             EXSM.StateMachine.user_state(updated_state_machine)
+
+    assert :ok == EXSM.terminate(TransitionCallbacks, updated_state_machine)
+
+    assert [{Callbacks, :enter_state_noreply,
+             [:one, %TransitionCallbacks{history: []}, nil,
+               %TransitionCallbacks{history: [{:enter, :one}]}]},
+             {Callbacks, :leave_state_noreply,
+               [:one, %TransitionCallbacks{history: [{:enter, :one}]}, :increment,
+                 %TransitionCallbacks{history: [{:leave, :one}, {:enter, :one}]}]},
+             {Callbacks, :action_noreply,
+               [:one_two, %TransitionCallbacks{history: [{:leave, :one}, {:enter, :one}]}, :increment,
+                 %TransitionCallbacks{history: [{:action, :one_two}, {:leave, :one}, {:enter, :one}]}]},
+             {Callbacks, :enter_state_noreply,
+               [:two, %TransitionCallbacks{history: [{:action, :one_two}, {:leave, :one}, {:enter, :one}]}, :increment,
+                 %TransitionCallbacks{history: [{:enter, :two}, {:action, :one_two}, {:leave, :one}, {:enter, :one}]}]},
+             {Callbacks, :leave_state_noreply,
+               [:two, %TransitionCallbacks{history: [{:enter, :two}, {:action, :one_two}, {:leave, :one}, {:enter, :one}]}, nil,
+                 %TransitionCallbacks{history: [{:leave, :two}, {:enter, :two}, {:action, :one_two}, {:leave, :one}, {:enter, :one}]}]}
+           ] == call_history(Callbacks)
+                |> call_only()
+  end
 end
