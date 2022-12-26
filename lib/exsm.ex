@@ -568,6 +568,24 @@ defmodule EXSM do
     end)
   end
 
+  # from == to is a config for internal transition
+  # action is run without leaving old state and entering new one
+  defp transit_state(_module, state_machine, _event, region, same_state, same_state, action) do
+    user_state = EXSM.StateMachine.user_state(state_machine)
+    case EXSM.Util.handle_action(action, user_state) do
+      {:noreply, updated_user_state} ->
+        updated_state_machine = EXSM.StateMachine.update_user_state(state_machine, updated_user_state)
+        {:ok, updated_state_machine, add_detail_not_nil([], :region, region)}
+
+      {:reply, reply, updated_user_state} ->
+        updated_state_machine = EXSM.StateMachine.update_user_state(state_machine, updated_user_state)
+        {:ok, updated_state_machine, reply, add_detail_not_nil([], :region, region)}
+
+      {:error, error} ->
+        {:error, error, add_detail_not_nil([state_machine: state_machine], :region, region)}
+    end
+  end
+
   # leave from_state -> run action -> enter to_state
   # if error happens rollback will occur,
   # ex. leave from_state -> run action 💥 (error happened) -> enter from_state (rollback)

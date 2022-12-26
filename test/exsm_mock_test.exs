@@ -66,6 +66,19 @@ defmodule EXSMMockTest do
           Callbacks.action_reply(:one_cant_enter_reply, state, event, :reply_data,
             TransitionCallbacks.record(state, {:action, :one_cant_enter_reply}))
 
+      :one <- :stay = event >>> :one
+        action [user_state: state], do:
+          Callbacks.action_noreply(:one_one, state, event, TransitionCallbacks.record(state, {:action, :one_one}))
+
+      :one <- :stay_reply = event >>> :one
+        action [user_state: state], do:
+          Callbacks.action_reply(:one_one, state, event, "reply", TransitionCallbacks.record(state, {:action, :one_one}))
+
+      :one <- :stay_error = event >>> :one
+        action [user_state: state], do: Callbacks.action_error(:one_one, state, event)
+
+      :cant_leave <- :stay >>> :cant_leave
+
     end
 
     def record(%TransitionCallbacks{history: history} = state, value) do
@@ -77,8 +90,27 @@ defmodule EXSMMockTest do
     Enum.map(calls, fn {_, call, _} -> call end)
   end
 
+  test_with_callbacks_mock "new with on_enter" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(TransitionCallbacks,
+                                                    initial_states: [:one],
+                                                    user_state: %TransitionCallbacks{})
+    assert %EXSM.State{name: :one} == EXSM.StateMachine.current_state(state_machine)
+    assert %TransitionCallbacks{history: [enter: :one]} == EXSM.StateMachine.user_state(state_machine)
+
+    assert [{Callbacks, :enter_state_noreply, [:one, %TransitionCallbacks{}, nil,
+              %TransitionCallbacks{history: [{:enter, :one}]}]}] ==
+             call_history(Callbacks)
+             |> call_only()
+  end
+
   test_with_callbacks_mock "new with error on_enter" do
-    assert {:error, :test_enter} == EXSM.new(TransitionCallbacks, initial_states: [:cant_enter])
+    assert {:error, :test_enter} == EXSM.new(TransitionCallbacks,
+                                      initial_states: [:cant_enter],
+                                      user_state: :my_state)
+
+    assert [{Callbacks, :enter_state_error, [:cant_enter, :my_state, nil]}] ==
+             call_history(Callbacks)
+             |> call_only()
   end
 
   test_with_callbacks_mock "process_event callbacks order successful transition" do
@@ -216,8 +248,8 @@ defmodule EXSMMockTest do
 
   test_with_callbacks_mock "process_event callbacks order error in enter reply" do
     {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(TransitionCallbacks,
-      initial_states: [:one],
-      user_state: %TransitionCallbacks{})
+                                                    initial_states: [:one],
+                                                    user_state: %TransitionCallbacks{})
     assert %EXSM.State{name: :one} == EXSM.StateMachine.current_state(state_machine)
     assert %TransitionCallbacks{history: [enter: :one]} == EXSM.StateMachine.user_state(state_machine)
 
@@ -241,6 +273,86 @@ defmodule EXSMMockTest do
              {Callbacks, :enter_state_noreply,
                [:one, %TransitionCallbacks{history: [{:action, :one_cant_enter_reply}, {:leave, :one}, {:enter, :one}]}, nil,
                  %TransitionCallbacks{history: [{:enter, :one}, {:action, :one_cant_enter_reply}, {:leave, :one}, {:enter, :one}]}]}
+           ] == call_history(Callbacks)
+                |> call_only()
+  end
+
+  test_with_callbacks_mock "process_event callbacks internal transition noreply" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(TransitionCallbacks,
+                                                    initial_states: [:one],
+                                                    user_state: %TransitionCallbacks{})
+    assert %EXSM.State{name: :one} == EXSM.StateMachine.current_state(state_machine)
+    assert %TransitionCallbacks{history: [enter: :one]} == EXSM.StateMachine.user_state(state_machine)
+
+    {:ok, %EXSM.StateMachine{} = updated_state_machine, []} =
+      EXSM.process_event(TransitionCallbacks, state_machine, :stay)
+    assert %EXSM.State{name: :one} == EXSM.StateMachine.current_state(updated_state_machine)
+    assert %TransitionCallbacks{history: [action: :one_one, enter: :one]} ==
+             EXSM.StateMachine.user_state(updated_state_machine)
+
+    assert [{Callbacks, :enter_state_noreply,
+             [:one, %TransitionCallbacks{history: []}, nil,
+               %TransitionCallbacks{history: [{:enter, :one}]}]},
+             {Callbacks, :action_noreply,
+               [:one_one, %TransitionCallbacks{history: [{:enter, :one}]}, :stay,
+                 %TransitionCallbacks{history: [{:action, :one_one}, {:enter, :one}]}]}
+           ] == call_history(Callbacks)
+                |> call_only()
+  end
+
+  test_with_callbacks_mock "process_event callbacks internal transition reply" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(TransitionCallbacks,
+                                                    initial_states: [:one],
+                                                    user_state: %TransitionCallbacks{})
+    assert %EXSM.State{name: :one} == EXSM.StateMachine.current_state(state_machine)
+    assert %TransitionCallbacks{history: [enter: :one]} == EXSM.StateMachine.user_state(state_machine)
+
+    {:ok, %EXSM.StateMachine{} = updated_state_machine, "reply", []} =
+      EXSM.process_event(TransitionCallbacks, state_machine, :stay_reply)
+    assert %EXSM.State{name: :one} == EXSM.StateMachine.current_state(updated_state_machine)
+    assert %TransitionCallbacks{history: [action: :one_one, enter: :one]} ==
+             EXSM.StateMachine.user_state(updated_state_machine)
+
+    assert [{Callbacks, :enter_state_noreply,
+             [:one, %TransitionCallbacks{history: []}, nil,
+               %TransitionCallbacks{history: [{:enter, :one}]}]},
+             {Callbacks, :action_reply,
+               [:one_one, %TransitionCallbacks{history: [{:enter, :one}]}, :stay_reply, "reply",
+                 %TransitionCallbacks{history: [{:action, :one_one}, {:enter, :one}]}]}
+           ] == call_history(Callbacks)
+                |> call_only()
+  end
+
+  test_with_callbacks_mock "process_event callbacks internal transition error" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(TransitionCallbacks,
+                                                    initial_states: [:one],
+                                                    user_state: %TransitionCallbacks{})
+    assert %EXSM.State{name: :one} == EXSM.StateMachine.current_state(state_machine)
+    assert %TransitionCallbacks{history: [enter: :one]} == EXSM.StateMachine.user_state(state_machine)
+
+    assert {:error, :test_action, [state_machine: EXSM.StateMachine.update_user_state(state_machine,
+             %TransitionCallbacks{history: [enter: :one]})]} ==
+               EXSM.process_event(TransitionCallbacks, state_machine, :stay_error)
+
+    assert [{Callbacks, :enter_state_noreply,
+             [:one, %TransitionCallbacks{history: []}, nil, %TransitionCallbacks{history: [{:enter, :one}]}]},
+             {Callbacks, :action_error,
+               [:one_one, %TransitionCallbacks{history: [{:enter, :one}]}, :stay_error]}
+           ] == call_history(Callbacks)
+                |> call_only()
+  end
+
+  test_with_callbacks_mock "process_event callbacks internal no leave, no action" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(TransitionCallbacks,
+                                                    initial_states: [:cant_leave],
+                                                    user_state: %TransitionCallbacks{})
+    assert %EXSM.State{name: :cant_leave} == EXSM.StateMachine.current_state(state_machine)
+    assert %TransitionCallbacks{history: [enter: :cant_leave]} == EXSM.StateMachine.user_state(state_machine)
+
+    assert {:ok, state_machine, []} == EXSM.process_event(TransitionCallbacks, state_machine, :stay)
+
+    assert [{Callbacks, :enter_state_noreply,
+             [:cant_leave, %TransitionCallbacks{history: []}, nil, %TransitionCallbacks{history: [{:enter, :cant_leave}]}]},
            ] == call_history(Callbacks)
                 |> call_only()
   end
