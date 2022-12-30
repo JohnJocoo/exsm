@@ -12,7 +12,7 @@ defmodule EXSM.StateMachine do
                current_states: %{region() => EXSM.State.t()},
                current_state_ids: %{region() => atom()},
                user_state: any(),
-               regions: [region()]
+               regions: [EXSM.Region.t()]
              }
   @enforce_keys [:module, :current_states, :current_state_ids, :user_state]
   defstruct [:module, :current_states, :current_state_ids, :user_state, regions: []]
@@ -28,12 +28,21 @@ defmodule EXSM.StateMachine do
           fn {_, %EXSM.State{region: region} = state} -> {region, state} end)
         ids_map = Map.new(initial_states,
           fn {id, %EXSM.State{region: region}} -> {region, id} end)
+        regions = Keyword.get(opts, :regions, [%EXSM.Region{name: nil}])
+        Enum.each(regions, fn %EXSM.Region{name: region} ->
+          if not Map.has_key?(states_map, region) do
+            raise(ArgumentError, """
+              no initial state is provided for region #{inspect(region)}
+              for module #{module}
+              """)
+          end
+        end)
         %__MODULE__{
           module: module,
           current_states: states_map,
           current_state_ids: ids_map,
           user_state: Keyword.get(opts, :user_state),
-          regions: Keyword.get(opts, :regions, [nil])
+          regions: regions
         }
 
       _ ->
@@ -54,6 +63,11 @@ defmodule EXSM.StateMachine do
   @spec all_current_states(__MODULE__.t()) :: [EXSM.State.t()]
   def all_current_states(%__MODULE__{current_states: states}) do
     Map.values(states)
+  end
+
+  @spec regions(__MODULE__.t()) :: EXSM.Region.t()
+  def regions(%__MODULE__{regions: regions}) do
+    regions
   end
 
   @spec current_state(__MODULE__.t(), region() | nil) :: EXSM.State.t()

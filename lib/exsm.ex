@@ -50,6 +50,50 @@ defmodule EXSM do
     end
   end
 
+  ### Common definition macros
+
+  defmacro describe(info) do
+    quote do
+      attribute =
+        cond do
+          Module.has_attribute?(__MODULE__, :current_state_keyword) ->
+            :current_state_keyword
+
+          Module.has_attribute?(__MODULE__, :current_region_keyword) ->
+            :current_region_keyword
+
+          true ->
+            raise """
+            describe can only be defined within region or state block"
+            Example:
+            state do
+              describe ...
+            end
+            """
+        end
+
+      Module.put_attribute(__MODULE__, attribute, {:description, unquote(info)})
+    end
+  end
+
+  ### Region definition macros
+
+  defmacro region(name, do: block) when is_atom(name) do
+    quote do
+      Module.register_attribute(__MODULE__, :current_region_keyword, accumulate: true)
+      Module.put_attribute(__MODULE__, :region_name, unquote(name))
+
+      unquote(block)
+
+      %EXSM.Region{} = region = EXSM.Macro.region_from_keyword(
+        unquote(name),
+        Module.delete_attribute(__MODULE__, :current_region_keyword)
+      )
+      Module.delete_attribute(__MODULE__, :region_name)
+      Module.put_attribute(__MODULE__, :regions, region)
+    end
+  end
+
   ### State definition macros
 
   defmacro state(name, do: block) do
@@ -61,7 +105,8 @@ defmodule EXSM do
       %EXSM.Macro.State{state: state} = state_meta = EXSM.Macro.state_from_keyword(
         unquote(name),
         Module.delete_attribute(__MODULE__, :current_state_keyword),
-        length(Module.get_attribute(__MODULE__, :states_meta))
+        length(Module.get_attribute(__MODULE__, :states_meta)),
+        Module.get_attribute(__MODULE__, :region_name)
       )
       Module.put_attribute(__MODULE__, :states_meta, {unquote(name), state_meta})
       Module.put_attribute(__MODULE__, :states, state)
@@ -74,19 +119,12 @@ defmodule EXSM do
       %EXSM.Macro.State{state: state} = state_meta = EXSM.Macro.state_from_keyword(
         unquote(name),
         [],
-        length(Module.get_attribute(__MODULE__, :states_meta))
+        length(Module.get_attribute(__MODULE__, :states_meta)),
+        Module.get_attribute(__MODULE__, :region_name)
       )
       Module.put_attribute(__MODULE__, :states_meta, {unquote(name), state_meta})
       Module.put_attribute(__MODULE__, :states, state)
       EXSM._put_initial_state()
-    end
-  end
-
-  defmacro describe(info) do
-    quote do
-      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "describe")
-
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:description, unquote(info)})
     end
   end
 
@@ -200,8 +238,8 @@ defmodule EXSM do
         else
           raise """
           Only one state can be marked as initial.
-          First state #{inspect(state)}
-          Second #{inspect(state)}
+          First state #{inspect(initial_state_region.name)}
+          Second #{inspect(state.name)}
           """
         end
       end
@@ -211,6 +249,20 @@ defmodule EXSM do
   defmacro _inject_states_meta() do
     quote unquote: false do
       if not Module.get_attribute(__MODULE__, :states_meta_defined) do
+        repeted_states =
+          Module.get_attribute(__MODULE__, :states)
+          |> Enum.map(fn %EXSM.State{name: name} -> name end)
+          |> Enum.frequencies()
+          |> Enum.filter(fn {_, frequency} -> frequency > 1 end)
+          |> Enum.map(fn {name, _} -> name end)
+
+        if repeted_states != [] do
+          raise """
+          There are duplicated states in module #{__MODULE__}:
+          #{inspect(repeted_states)}
+          """
+        end
+
         states_meta =
           Module.get_attribute(__MODULE__, :states_meta)
           |> Enum.map(fn {_, %EXSM.Macro.State{} = state_meta} -> state_meta end)
@@ -419,7 +471,24 @@ defmodule EXSM do
       if not Keyword.has_key?(opts, :regions) do
         [{:regions, get_regions(module)} | opts]
       else
-        opts
+        regions =
+          get_regions(module)
+          |> Map.new(fn %EXSM.Region{name: name} = region -> {name, region} end)
+        filtered_regions =
+          Keyword.get(opts, :regions, [])
+          |> Enum.map(fn name ->
+            case Map.get(regions, name) do
+              nil ->
+                raise """
+                No region #{inspect(name)} exists
+                in module #{module}
+                """
+
+              %EXSM.Region{} = region ->
+                region
+            end
+          end)
+        Keyword.replace!(opts, :regions, filtered_regions)
       end
     state_machine = EXSM.StateMachine.new(module, initial_states, opts)
     {state_ids, _} = Enum.unzip(initial_states)
@@ -436,9 +505,8 @@ defmodule EXSM do
     module.__info__(:attributes)
     |> Keyword.get_values(:regions)
     |> List.flatten()
-    |> Enum.reverse()
     |> then(fn
-         [] -> [nil]
+         [] -> [%EXSM.Region{name: nil}]
          regions when is_list(regions) -> regions
        end)
   end
@@ -561,9 +629,9 @@ defmodule EXSM do
   end
 
   defp find_transition_info(module, state_machine, event) do
-    %EXSM.StateMachine{regions: regions} = state_machine
     user_state = EXSM.StateMachine.user_state(state_machine)
-    Enum.reduce_while(regions, nil, fn region, _ ->
+    EXSM.StateMachine.regions(state_machine)
+    |> Enum.reduce_while(nil, fn %EXSM.Region{name: region}, _ ->
       %EXSM.State{name: from} = EXSM.StateMachine.current_state(state_machine, region)
       case EXSM.Util.transition_info(module, from, event, user_state) do
         {:transition, transition} ->
@@ -675,9 +743,10 @@ defmodule EXSM do
     end
   end
 
-  defp leave_all(module, %EXSM.StateMachine{module: module, regions: regions} = state_machine) do
+  defp leave_all(module, %EXSM.StateMachine{module: module} = state_machine) do
     user_state = EXSM.StateMachine.user_state(state_machine)
-    Enum.reduce(regions, {user_state, []}, fn region, {user_state, acc} ->
+    EXSM.StateMachine.regions(state_machine)
+    |> Enum.reduce({user_state, []}, fn %EXSM.Region{name: region}, {user_state, acc} ->
       on_leave = EXSM.Util.on_leave_by_id(module, EXSM.StateMachine.current_state_id(state_machine, region))
       case EXSM.Util.leave_state(on_leave, user_state) do
         {:noreply, updated_user_state} ->

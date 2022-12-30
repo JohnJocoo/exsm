@@ -14,27 +14,28 @@ defmodule EXSM.Macro do
     defstruct [:state, :on_enter, :on_leave, :id]
   end
 
-  def state_from_keyword(name, keyword, seq_number) do
-    has_duplicate_keys =
-      Enum.group_by(keyword, &elem(&1, 0), &elem(&1, 1))
-      |> Enum.any?(fn {_, elements} -> length(elements) > 1 end)
-
-    if has_duplicate_keys do
-      raise """
-      State #{name} has duplicate attributes
-      #{inspect(Enum.map(keyword, &elem(&1, 0)))}
-      """
-    end
+  def state_from_keyword(name, keyword, seq_number, region) do
+    assert_no_duplicate_keys(name, keyword, "State")
 
     %EXSM.Macro.State{
       state: %EXSM.State{
         name: name,
         description: Keyword.get(keyword, :description),
-        initial?: Keyword.get(keyword, :initial?, false)
+        initial?: Keyword.get(keyword, :initial?, false),
+        region: region
       },
       id: make_state_id(name, seq_number),
       on_enter: Keyword.get(keyword, :on_enter),
       on_leave: Keyword.get(keyword, :on_leave)
+    }
+  end
+
+  def region_from_keyword(name, keyword) do
+    assert_no_duplicate_keys(name, keyword, "Region")
+
+    %EXSM.Region{
+      name: name,
+      description: Keyword.get(keyword, :description)
     }
   end
 
@@ -308,6 +309,19 @@ defmodule EXSM.Macro do
       #{statement} is required in #{scope}
       Example:
       #{example}
+      """
+    end
+  end
+
+  defp assert_no_duplicate_keys(name, keyword, place) do
+    has_duplicate_keys =
+      Enum.group_by(keyword, &elem(&1, 0), &elem(&1, 1))
+      |> Enum.any?(fn {_, elements} -> length(elements) > 1 end)
+
+    if has_duplicate_keys do
+      raise """
+      #{place} #{name} has duplicate attributes
+      #{inspect(Enum.map(keyword, &elem(&1, 0)))}
       """
     end
   end
