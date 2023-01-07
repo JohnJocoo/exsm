@@ -6,7 +6,7 @@ defmodule EXSM.UtilTest do
   alias EXSM.Test.Callbacks
 
   defmodule TestModule do
-    use EXSM
+    use EXSM.SMAL
 
     state :one do
       initial true
@@ -75,7 +75,7 @@ defmodule EXSM.UtilTest do
   end
 
   defmodule TransitionTestModule do
-    use EXSM
+    use EXSM.SMAL
 
     state :one
     state :two

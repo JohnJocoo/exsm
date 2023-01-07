@@ -5,17 +5,17 @@ defmodule EXSMTest do
   doctest EXSM
 
   defmodule StatesNone do
-    use EXSM
+    use EXSM.SMAL
   end
 
   defmodule StatesOne do
-    use EXSM
+    use EXSM.SMAL
 
     state :one
   end
 
   defmodule StatesThree do
-    use EXSM
+    use EXSM.SMAL
 
     state :one
     state :two
@@ -23,7 +23,7 @@ defmodule EXSMTest do
   end
 
   defmodule StatesDefaultOne do
-    use EXSM
+    use EXSM.SMAL
 
     state :one, do: initial true
     state :two
@@ -31,7 +31,7 @@ defmodule EXSMTest do
   end
 
   defmodule StatesDefaultTwo do
-    use EXSM
+    use EXSM.SMAL
 
     state :one
     state :two do
@@ -41,7 +41,7 @@ defmodule EXSMTest do
   end
 
   defmodule TransitionSimpleOne do
-    use EXSM
+    use EXSM.SMAL
 
     state :one, do: initial true
     state :two
@@ -52,7 +52,7 @@ defmodule EXSMTest do
   end
 
   defmodule TransitionSimpleOneReply do
-    use EXSM, no_transition: :reply
+    use EXSM.SMAL, no_transition: :reply
 
     state :one, do: initial true
     state :two
@@ -63,7 +63,7 @@ defmodule EXSMTest do
   end
 
   defmodule TransitionSimpleOneIgnore do
-    use EXSM, no_transition: :ignore
+    use EXSM.SMAL, no_transition: :ignore
 
     state :one, do: initial true
     state :two
@@ -74,7 +74,7 @@ defmodule EXSMTest do
   end
 
   defmodule TransitionSimpleOneError do
-    use EXSM, no_transition: :error
+    use EXSM.SMAL, no_transition: :error
 
     state :one, do: initial true
     state :two
@@ -85,7 +85,7 @@ defmodule EXSMTest do
   end
 
   defmodule TransitionSimpleOneNoFunctionMatch do
-    use EXSM, no_transition: :no_function_match
+    use EXSM.SMAL, no_transition: :no_function_match
 
     state :one, do: initial true
     state :two
@@ -96,7 +96,7 @@ defmodule EXSMTest do
   end
 
   defmodule TransitionSimpleFour do
-    use EXSM
+    use EXSM.SMAL
 
     state :one, do: initial true
     state :two
@@ -111,7 +111,7 @@ defmodule EXSMTest do
   end
 
   defmodule TransitionMatchOrder do
-    use EXSM
+    use EXSM.SMAL
 
     state :one
     state :two
@@ -126,46 +126,6 @@ defmodule EXSMTest do
       :two <- {:substruct, _value} >>> :dunno
       :two <- {:substruct, 1} >>> :one
     end
-  end
-
-  test "defines __using__" do
-    assert macro_exported?(EXSM, :__using__, 1)
-  end
-
-  test "defines state" do
-    assert macro_exported?(EXSM, :state, 1)
-    assert macro_exported?(EXSM, :state, 2)
-  end
-
-  test "defines describe" do
-    assert macro_exported?(EXSM, :describe, 1)
-  end
-
-  test "defines initial" do
-    assert macro_exported?(EXSM, :initial, 1)
-  end
-
-  test "defines on_enter" do
-    assert macro_exported?(EXSM, :on_enter, 1)
-    assert macro_exported?(EXSM, :on_enter, 2)
-  end
-
-  test "defines on_leave" do
-    assert macro_exported?(EXSM, :on_leave, 1)
-    assert macro_exported?(EXSM, :on_leave, 2)
-  end
-
-  test "defines transitions" do
-    assert macro_exported?(EXSM, :transitions, 1)
-  end
-
-  test "defines operator <-" do
-    assert macro_exported?(EXSM, :<-, 2)
-  end
-
-  test "defines action" do
-    assert macro_exported?(EXSM, :action, 1)
-    assert macro_exported?(EXSM, :action, 2)
   end
 
   test "states EXSMTest" do

@@ -7,7 +7,8 @@ defmodule EXSM.PlayerTest do
   alias EXSM.Test.Util
 
   defmodule PlayerSM do
-    use EXSM
+    use EXSM.SMAL
+    use EXSM.Functions
 
     import EXSM.PlayerTest.Player, only: [is_good_disk: 1]
 
@@ -103,11 +104,27 @@ defmodule EXSM.PlayerTest do
     {:__block__, [], functions}
   end
 
-  test "defines states()" do
+  test "defines states/0" do
     assert function_exported?(PlayerSM, :states, 0)
   end
 
-  test "states() return all states" do
+  test "defines new/0" do
+    assert function_exported?(PlayerSM, :new, 0)
+  end
+
+  test "defines new/1" do
+    assert function_exported?(PlayerSM, :new, 1)
+  end
+
+  test "defines process_event/2" do
+    assert function_exported?(PlayerSM, :process_event, 2)
+  end
+
+  test "defines terminate/1" do
+    assert function_exported?(PlayerSM, :terminate, 1)
+  end
+
+  test "states/0 return all states" do
     states = PlayerSM.states()
     assert is_list(states)
     assert length(states) == 5
@@ -128,6 +145,60 @@ defmodule EXSM.PlayerTest do
                          description: nil,
                          initial?: false}
            ])
+  end
+
+  test "new/0 returns default state machine" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = PlayerSM.new()
+    assert %EXSM.State{
+             name: :empty,
+             description: "No cd, also initial state",
+             initial?: true
+           } == EXSM.StateMachine.current_state(state_machine)
+    assert [%EXSM.State{
+             name: :empty,
+             description: "No cd, also initial state",
+             initial?: true
+           }] == EXSM.StateMachine.all_current_states(state_machine)
+    assert nil == EXSM.StateMachine.user_state(state_machine)
+  end
+
+  test "new/1 returns state machine with states and user data" do
+    {:ok, %EXSM.StateMachine{} = state_machine} =
+      PlayerSM.new(initial_states: [:playing], user_state: {:state, "data"})
+    assert %EXSM.State{
+             name: :playing,
+             description: "Playing a song now"
+           } == EXSM.StateMachine.current_state(state_machine)
+    assert [%EXSM.State{
+             name: :playing,
+             description: "Playing a song now"
+           }] == EXSM.StateMachine.all_current_states(state_machine)
+    assert {:state, "data"} == EXSM.StateMachine.user_state(state_machine)
+  end
+
+  test "process_event/2 :empty <- {:cd_detected, {:disk, true}, :data} >>> :stop" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = PlayerSM.new()
+    assert %EXSM.State{
+             name: :empty,
+             description: "No cd, also initial state",
+             initial?: true
+           } == EXSM.StateMachine.current_state(state_machine)
+    {:ok, %EXSM.StateMachine{} = updated_state_machine, _} =
+      PlayerSM.process_event(state_machine, {:cd_detected, {:disk, true}, :data})
+    assert %EXSM.State{
+             name: :stopped,
+             description: "Playback was stopped"
+           } == EXSM.StateMachine.current_state(updated_state_machine)
+  end
+
+  test "terminate/1 returns :ok" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = PlayerSM.new()
+    assert %EXSM.State{
+             name: :empty,
+             description: "No cd, also initial state",
+             initial?: true
+           } == EXSM.StateMachine.current_state(state_machine)
+    assert :ok == PlayerSM.terminate(state_machine)
   end
 
   test "EXSMTransitions ':empty <- {:cd_detected, disk, _} >>> :stopped' go to :stopped on valid disk" do

@@ -10,13 +10,13 @@ defmodule EXSM.StateMachineRegionTest do
   end
 
   defmodule NoRegions do
-    use EXSM
+    use EXSM.SMAL
 
     state :initial, do: initial true
   end
 
   defmodule OneRegion do
-    use EXSM
+    use EXSM.SMAL
 
     region :main do
       state :initial, do: initial true
@@ -24,7 +24,7 @@ defmodule EXSM.StateMachineRegionTest do
   end
 
   defmodule ThreeRegions do
-    use EXSM
+    use EXSM.SMAL
 
     region :region_1 do
       state :stopped, do: initial true
@@ -40,7 +40,7 @@ defmodule EXSM.StateMachineRegionTest do
   end
 
   defmodule TwoRegionsOneInitial do
-    use EXSM
+    use EXSM.SMAL
 
     region :region_1 do
       state :stopped, do: initial true

@@ -7,7 +7,7 @@ defmodule EXSMMockTest do
   alias EXSM.Test.Callbacks
 
   defmodule TransitionCallbacks do
-    use EXSM
+    use EXSM.SMAL
 
     defstruct [history: [], secret: nil]
 
