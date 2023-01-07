@@ -3,8 +3,7 @@ defmodule EXSM.StateMachine do
 
   @type region :: atom()
   @type new_state_machine_opts :: [{:user_state, EXSM.State.user_state()} |
-                                   {:initial_states, [EXSM.State.name()]} |
-                                   {:regions, [region()]}] |
+                                   {:regions, [EXSM.Region.t()]}] |
                                   []
 
   @type t :: %__MODULE__{

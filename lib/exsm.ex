@@ -5,6 +5,10 @@ defmodule EXSM do
 
   require Logger
 
+  @type new_state_machine_opts :: [{:user_state, EXSM.State.user_state()} |
+                                   {:initial_states, [EXSM.State.name()]} |
+                                   {:regions, [atom()]}] |
+                                  []
   @type reply :: any()
   @type ok_details :: [{:region, atom()}] | []
   @type error_details :: [{:rollback_error, any()} |
@@ -20,7 +24,7 @@ defmodule EXSM do
     |> List.flatten()
   end
 
-  @spec new(module(), EXSM.StateMachine.new_state_machine_opts()) ::
+  @spec new(module(), new_state_machine_opts()) ::
           {:ok, EXSM.StateMachine.t()} | {:error, any()}
   def new(module, opts \\ []) when is_atom(module) do
     create(module, opts)
