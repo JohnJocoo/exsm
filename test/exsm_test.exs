@@ -128,6 +128,18 @@ defmodule EXSMTest do
     end
   end
 
+  defmodule DefaultUserStateValue do
+    use EXSM.SMAL, default_user_state: {:user_state, "data"}
+
+    state :one, do: initial true
+  end
+
+  defmodule DefaultUserStateFunction do
+    use EXSM.SMAL, default_user_state: fn -> {:user_state, "function"} end
+
+    state :one, do: initial true
+  end
+
   test "states EXSMTest" do
     assert [] == EXSM.states(EXSMTest)
   end
@@ -353,5 +365,20 @@ defmodule EXSMTest do
     {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(StatesDefaultOne)
     assert [%EXSM.State{name: :one, initial?: true}] == EXSM.StateMachine.all_current_states(state_machine)
     assert :ok == EXSM.terminate(StatesDefaultOne, state_machine)
+  end
+
+  test "new DefaultUserStateValue default state" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(DefaultUserStateValue)
+    assert {:user_state, "data"} == EXSM.StateMachine.user_state(state_machine)
+  end
+
+  test "new DefaultUserStateFunction default state" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(DefaultUserStateFunction)
+    assert {:user_state, "function"} == EXSM.StateMachine.user_state(state_machine)
+  end
+
+  test "new DefaultUserStateValue override user state in opts" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(DefaultUserStateValue, user_state: :my_state)
+    assert :my_state == EXSM.StateMachine.user_state(state_machine)
   end
 end

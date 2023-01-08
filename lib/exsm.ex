@@ -82,6 +82,14 @@ defmodule EXSM do
           end)
         Keyword.replace!(opts, :regions, filtered_regions)
       end
+
+    opts =
+      if Keyword.has_key?(opts, :user_state) do
+        opts
+      else
+        [{:user_state, get_default_user_state(module)} | opts]
+      end
+
     state_machine = EXSM.StateMachine.new(module, initial_states, opts)
     {state_ids, _} = Enum.unzip(initial_states)
     case enter_all_states(module, state_ids, EXSM.StateMachine.user_state(state_machine)) do
@@ -357,4 +365,15 @@ defmodule EXSM do
 
   defp add_detail_not_nil(details, _key, nil), do: details
   defp add_detail_not_nil(details, key, value), do: [{key, value} | details]
+
+  defp get_default_user_state(module) do
+    [default_user_state] =
+      module.__info__(:attributes)
+      |> Keyword.get(:default_user_state, [nil])
+    if is_function(default_user_state) do
+      default_user_state.()
+    else
+      default_user_state
+    end
+  end
 end

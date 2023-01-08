@@ -5,6 +5,7 @@ defmodule EXSM.SMAL do
 
   # opts:
   #   no_transition: :reply | :ignore | :error | :no_function_match
+  #   default_user_state: term() | ( -> term())
   defmacro __using__(opts) do
     default_transition_values = [:no_function_match, :ignore, :reply, :error]
     default_transition_policy = Keyword.get(opts, :no_transition, :reply)
@@ -14,6 +15,8 @@ defmodule EXSM.SMAL do
       :default_transition can only be one of #{inspect(default_transition_values)}
       """
     end
+
+    default_user_state = Keyword.get(opts, :default_user_state, nil)
 
     quote do
       import EXSM.Macro
@@ -27,6 +30,17 @@ defmodule EXSM.SMAL do
       Module.put_attribute(__MODULE__, :default_transition_policy, unquote(default_transition_policy))
       Module.put_attribute(__MODULE__, :states_meta_defined, false)
       Module.register_attribute(__MODULE__, :regions, accumulate: true, persist: true)
+
+      default_user_state = unquote(default_user_state)
+      if is_function(default_user_state) and 0 != :erlang.fun_info(default_user_state) |> Keyword.fetch!(:arity) do
+        raise """
+          :default_user_state for EXSM state machine can only be
+          constant value or function/0
+        """
+      end
+
+      Module.register_attribute(__MODULE__, :default_user_state, persist: true)
+      Module.put_attribute(__MODULE__, :default_user_state, default_user_state)
     end
   end
 
