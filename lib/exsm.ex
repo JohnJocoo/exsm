@@ -91,8 +91,9 @@ defmodule EXSM do
       end
 
     state_machine = EXSM.StateMachine.new(module, initial_states, opts)
-    {state_ids, _} = Enum.unzip(initial_states)
-    case enter_all_states(module, state_ids, EXSM.StateMachine.user_state(state_machine)) do
+    user_state = EXSM.StateMachine.user_state(state_machine)
+    regions = EXSM.StateMachine.regions(state_machine)
+    case enter_all_states(module, initial_states, user_state, regions) do
       {:ok, updated_user_state} ->
         {:ok, EXSM.StateMachine.update_user_state(state_machine, updated_user_state)}
 
@@ -158,8 +159,14 @@ defmodule EXSM do
     end
   end
 
-  defp enter_all_states(module, state_ids, user_state) do
-    Enum.reduce_while(state_ids, {[], user_state}, fn state_id, {entered_states, acc_user_state} ->
+  defp enter_all_states(module, initial_states, user_state, regions) do
+    region_state_ids =
+      Map.new(initial_states, fn {id, %EXSM.State{region: region}} ->
+        {region, id}
+      end)
+    Enum.map(regions, fn %EXSM.Region{name: region} -> region end)
+    |> Enum.reduce_while({[], user_state}, fn region, {entered_states, acc_user_state} ->
+      state_id = Map.fetch!(region_state_ids, region)
       try do
         on_enter = EXSM.Util.on_enter_by_id(module, state_id)
         case EXSM.Util.enter_state(on_enter, acc_user_state) do
@@ -346,6 +353,7 @@ defmodule EXSM do
   defp leave_all(module, %EXSM.StateMachine{module: module} = state_machine) do
     user_state = EXSM.StateMachine.user_state(state_machine)
     EXSM.StateMachine.regions(state_machine)
+    |> Enum.reverse()
     |> Enum.reduce({user_state, []}, fn %EXSM.Region{name: region}, {user_state, acc} ->
       on_leave = EXSM.Util.on_leave_by_id(module, EXSM.StateMachine.current_state_id(state_machine, region))
       case EXSM.Util.leave_state(on_leave, user_state) do
