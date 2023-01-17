@@ -1,5 +1,5 @@
 defmodule EXSM.TransitionsRegionTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: false
 
   import Mock
   import EXSM.Test.Callbacks
@@ -65,6 +65,25 @@ defmodule EXSM.TransitionsRegionTest do
         action do: Callbacks.action_noreply(:bottom_state1, nil, nil, nil)
       :top_state1 <- :event >>> :top_state2
         action do: Callbacks.action_noreply(:top_state1, nil, nil, nil)
+    end
+  end
+
+  defmodule TerminateComposite do
+    use EXSM.SMAL
+
+    region :safety do
+      state :normal, do: initial true
+      state :critical, do: terminal true
+    end
+
+    region :functional do
+      state :one, do: initial true
+      state :two
+    end
+
+    transitions do
+      :one <- :event >>> :two
+      :normal <- :error >>> :critical
     end
   end
 
@@ -180,5 +199,37 @@ defmodule EXSM.TransitionsRegionTest do
              {Callbacks, :leave_state_noreply, [:top_state2, nil, nil, nil]}
            ] = call_history(Callbacks)
                |> call_only()
+  end
+
+  test "state machine with regions accept events when no terminal state" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(TerminateComposite)
+    assert %EXSM.State{name: :one, initial?: true, region: :functional} ==
+             EXSM.StateMachine.current_state(state_machine, :functional)
+    assert %EXSM.State{name: :normal, initial?: true, region: :safety} ==
+             EXSM.StateMachine.current_state(state_machine, :safety)
+    assert false == EXSM.StateMachine.terminal?(state_machine)
+
+    {:ok, %EXSM.StateMachine{}, _} =
+      EXSM.process_event(TerminateComposite, state_machine, :event)
+  end
+
+  test "terminal state machine with regions ignore all events" do
+    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(TerminateComposite)
+    assert %EXSM.State{name: :one, initial?: true, region: :functional} ==
+             EXSM.StateMachine.current_state(state_machine, :functional)
+    assert %EXSM.State{name: :normal, initial?: true, region: :safety} ==
+             EXSM.StateMachine.current_state(state_machine, :safety)
+    assert false == EXSM.StateMachine.terminal?(state_machine)
+
+    {:ok, %EXSM.StateMachine{} = state_machine, _} =
+      EXSM.process_event(TerminateComposite, state_machine, :error)
+    assert %EXSM.State{name: :one, initial?: true, region: :functional} ==
+             EXSM.StateMachine.current_state(state_machine, :functional)
+    assert %EXSM.State{name: :critical, terminal?: true, region: :safety} ==
+             EXSM.StateMachine.current_state(state_machine, :safety)
+    assert true == EXSM.StateMachine.terminal?(state_machine)
+
+    {:ok, %EXSM.StateMachine{}, :no_transition, _} =
+      EXSM.process_event(TerminateComposite, state_machine, :event)
   end
 end

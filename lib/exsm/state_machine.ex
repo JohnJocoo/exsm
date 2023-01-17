@@ -3,18 +3,27 @@ defmodule EXSM.StateMachine do
 
   @type region :: atom()
   @type new_state_machine_opts :: [{:user_state, EXSM.State.user_state()} |
-                                   {:regions, [EXSM.Region.t()]}] |
-                                  []
+                                   {:regions, [EXSM.Region.t()]} |
+                                   {:default_transition_policy, atom()}
+                                  ] | []
 
   @type t :: %__MODULE__{
                module: module(),
                current_states: %{region() => EXSM.State.t()},
                current_state_ids: %{region() => atom()},
                user_state: any(),
-               regions: [EXSM.Region.t()]
+               regions: [EXSM.Region.t()],
+               default_transition_policy: atom()
              }
   @enforce_keys [:module, :current_states, :current_state_ids, :user_state]
-  defstruct [:module, :current_states, :current_state_ids, :user_state, regions: []]
+  defstruct [
+    :module,
+    :current_states,
+    :current_state_ids,
+    :user_state,
+    regions: [],
+    default_transition_policy: :reply
+  ]
 
   @spec new(module(), [{atom(), EXSM.State.t()}], new_state_machine_opts()) :: __MODULE__.t()
   def new(module, initial_states, opts) when is_atom(module) and length(initial_states) > 0 do
@@ -41,7 +50,8 @@ defmodule EXSM.StateMachine do
           current_states: states_map,
           current_state_ids: ids_map,
           user_state: Keyword.get(opts, :user_state),
-          regions: regions
+          regions: regions,
+          default_transition_policy: Keyword.get(opts, :default_transition_policy, :reply)
         }
 
       _ ->
@@ -101,6 +111,11 @@ defmodule EXSM.StateMachine do
   @spec user_state(__MODULE__.t()) :: any()
   def user_state(%__MODULE__{user_state: user_state}) do
     user_state
+  end
+
+  @spec terminal?(__MODULE__.t()) :: boolean()
+  def terminal?(%__MODULE__{current_states: states}) do
+    Enum.any?(states, fn {_, %EXSM.State{terminal?: terminal}} -> terminal end)
   end
 
   @spec update_current_state(__MODULE__.t(), {atom(), EXSM.State.t()}, region() | nil) :: __MODULE__.t()

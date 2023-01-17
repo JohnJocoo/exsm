@@ -8,6 +8,7 @@ defmodule EXSM.State do
                name: name(),
                description: String.t(),
                initial?: boolean(),
+               terminal?: boolean(),
                region: atom() | nil
              }
   @enforce_keys [:name]
@@ -15,6 +16,7 @@ defmodule EXSM.State do
     :name,
     description: nil,
     initial?: false,
+    terminal?: false,
     region: nil
   ]
 

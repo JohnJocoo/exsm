@@ -14,6 +14,7 @@ defmodule EXSM.StateMachineTest do
     assert %State{name: :empty} == StateMachine.current_state(state_machine)
     assert :empty == StateMachine.current_state_id(state_machine)
     assert nil == StateMachine.user_state(state_machine)
+    assert false == StateMachine.terminal?(state_machine)
   end
 
   test "fail to create with no states" do
@@ -39,5 +40,10 @@ defmodule EXSM.StateMachineTest do
     updated_state_machine = StateMachine.update_current_state(state_machine, {:full, %State{name: :full}})
     assert %State{name: :full} == StateMachine.current_state(updated_state_machine)
     assert :full == StateMachine.current_state_id(updated_state_machine)
+  end
+
+  test "create with terminal state" do
+    state_machine = StateMachine.new(TestM, [{:empty, %State{name: :empty, terminal?: true}}], [])
+    assert true == StateMachine.terminal?(state_machine)
   end
 end

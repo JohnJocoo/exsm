@@ -249,4 +249,30 @@ defmodule EXSM.StateMachineRegionTest do
       ~r/region .?default does not exist for state machine .*TestM.*/,
       fn -> StateMachine.update_current_state(state_machine, {:full, region_state}, :default) end)
   end
+
+  test "create not in terminal state" do
+    initial_states = [
+      {:empty, %State{name: :empty, region: :default}},
+      {:normal, %State{name: :normal, region: :status}}
+    ]
+    state_machine = StateMachine.new(
+      TestM,
+      initial_states,
+      [regions: [%Region{name: :default}, %Region{name: :status}]]
+    )
+    assert false == StateMachine.terminal?(state_machine)
+  end
+
+  test "create in terminal state" do
+    initial_states = [
+      {:empty, %State{name: :empty, region: :default}},
+      {:normal, %State{name: :error, region: :status, terminal?: true}}
+    ]
+    state_machine = StateMachine.new(
+      TestM,
+      initial_states,
+      [regions: [%Region{name: :default}, %Region{name: :status}]]
+    )
+    assert true == StateMachine.terminal?(state_machine)
+  end
 end

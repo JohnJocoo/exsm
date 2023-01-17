@@ -90,6 +90,8 @@ defmodule EXSM do
         [{:user_state, get_default_user_state(module)} | opts]
       end
 
+    opts = [{:default_transition_policy, get_default_transition_policy(module)} | opts]
+
     state_machine = EXSM.StateMachine.new(module, initial_states, opts)
     user_state = EXSM.StateMachine.user_state(state_machine)
     regions = EXSM.StateMachine.regions(state_machine)
@@ -159,6 +161,14 @@ defmodule EXSM do
     end
   end
 
+  defp get_default_transition_policy(module) do
+    [policy] =
+      module.__info__(:attributes)
+      |> Keyword.get(:default_transition_policy, [:reply])
+
+    policy
+  end
+
   defp enter_all_states(module, initial_states, user_state, regions) do
     region_state_ids =
       Map.new(initial_states, fn {id, %EXSM.State{region: region}} ->
@@ -219,7 +229,19 @@ defmodule EXSM do
     end)
   end
 
-  defp handle_event(module, %EXSM.StateMachine{module: module} = state_machine, event) do
+  defp handle_event(
+         module,
+         %EXSM.StateMachine{default_transition_policy: policy} = state_machine,
+         event) do
+    case {EXSM.StateMachine.terminal?(state_machine), policy} do
+      {false, _} -> handle_event_active(module, state_machine, event)
+      {true, :reply} -> {:ok, state_machine, :no_transition, []}
+      {true, :ignore} -> {:ok, state_machine, []}
+      {true, :error} -> {:error, :no_transition, [state_machine: state_machine]}
+    end
+  end
+
+  defp handle_event_active(module, %EXSM.StateMachine{module: module} = state_machine, event) do
     case find_transition_info(module, state_machine, event) do
       {:transition, region, {from, to, action}} ->
         transit_state(module, state_machine, event, region, from, to, action)

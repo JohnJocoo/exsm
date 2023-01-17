@@ -27,6 +27,7 @@ defmodule EXSM.SMAL do
       Module.register_attribute(__MODULE__, :states, accumulate: true, persist: true)
       Module.register_attribute(__MODULE__, :states_meta, accumulate: true)
       Module.register_attribute(__MODULE__, :initial_states, accumulate: true, persist: true)
+      Module.register_attribute(__MODULE__, :default_transition_policy, persist: true)
       Module.put_attribute(__MODULE__, :default_transition_policy, unquote(default_transition_policy))
       Module.put_attribute(__MODULE__, :states_meta_defined, false)
       Module.register_attribute(__MODULE__, :regions, accumulate: true, persist: true)

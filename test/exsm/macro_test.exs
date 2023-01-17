@@ -14,6 +14,10 @@ defmodule EXSM.MacroTest do
     assert macro_exported?(EXSM.Macro, :initial, 1)
   end
 
+  test "defines terminal" do
+    assert macro_exported?(EXSM.Macro, :terminal, 1)
+  end
+
   test "defines on_enter" do
     assert macro_exported?(EXSM.Macro, :on_enter, 1)
     assert macro_exported?(EXSM.Macro, :on_enter, 2)

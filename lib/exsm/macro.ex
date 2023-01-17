@@ -89,12 +89,27 @@ defmodule EXSM.Macro do
 
   defmacro initial(true) do
     quote do
+      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "initial")
       Module.put_attribute(__MODULE__, :current_state_keyword, {:initial?, true})
     end
   end
 
   defmacro initial(false) do
     quote do
+      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "initial")
+    end
+  end
+
+  defmacro terminal(true) do
+    quote do
+      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "terminal")
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:terminal?, true})
+    end
+  end
+
+  defmacro terminal(false) do
+    quote do
+      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "terminal")
     end
   end
 
@@ -332,6 +347,7 @@ defmodule EXSM.Macro do
         name: name,
         description: Keyword.get(keyword, :description),
         initial?: Keyword.get(keyword, :initial?, false),
+        terminal?: Keyword.get(keyword, :terminal?, false),
         region: region
       },
       id: make_state_id(name, seq_number),
