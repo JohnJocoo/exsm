@@ -1,5 +1,5 @@
 defmodule EXSM.StateMachineRegionTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   alias EXSM.State
   alias EXSM.StateMachine

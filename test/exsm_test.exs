@@ -1,5 +1,5 @@
 defmodule EXSMTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   use ExUnitProperties
 
   doctest EXSM

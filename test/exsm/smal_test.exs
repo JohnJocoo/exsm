@@ -1,5 +1,5 @@
 defmodule EXSM.SMALTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
   doctest EXSM.SMAL
 

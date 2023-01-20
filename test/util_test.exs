@@ -1,5 +1,5 @@
 defmodule EXSM.UtilTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   use ExUnitProperties
 
   alias EXSM.Util
