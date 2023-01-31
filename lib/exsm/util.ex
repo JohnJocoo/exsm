@@ -78,6 +78,26 @@ defmodule EXSM.Util do
     end
   end
 
+  @spec function_to_arity_3((any(), any() -> any()) | ( -> any()), EXSM.Macro.ast()) :: EXSM.Macro.ast()
+  def function_to_arity_3(function, function_ast) do
+    arity =
+      :erlang.fun_info(function)
+      |> Keyword.fetch!(:arity)
+
+    case arity do
+      3 ->
+        function_ast
+
+      0 ->
+        quote do
+          fn _, _, _ ->
+            function = unquote(function_ast)
+            function.()
+          end
+        end
+    end
+  end
+
   @spec parent_module(module()) :: module()
   def parent_module(module) do
     Module.split(module)

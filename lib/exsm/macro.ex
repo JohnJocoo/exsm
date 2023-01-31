@@ -87,114 +87,143 @@ defmodule EXSM.Macro do
     end
   end
 
-  defmacro initial(true) do
+  defmacro initial(value) when is_boolean(value) do
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "initial")
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:initial?, true})
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:initial?, unquote(value)})
     end
   end
 
-  defmacro initial(false) do
-    quote do
-      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "initial")
-    end
-  end
-
-  defmacro terminal(true) do
+  defmacro terminal(value) when is_boolean(value) do
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "terminal")
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:terminal?, true})
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:terminal?, unquote(value)})
     end
   end
 
-  defmacro terminal(false) do
+  defmacro module(module) do
     quote do
-      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "terminal")
+      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "module")
+      value = unquote(module)
+      if not is_atom(value) do
+        raise "#{value} is not a module"
+      end
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:module, value})
     end
   end
 
-  # on_enter &Module.function/0
-  # on_enter &Module.function/2
-  # on_enter do: Module.function()
-  # on_enter [user_state: state], do: Module.function(state)
-  # on_enter user_state: state, event: event do
+  defmacro sub_machine(value) when is_boolean(value) do
+    quote do
+      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "sub_machine")
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:sub_machine?, unquote(value)})
+    end
+  end
+
+  defmacro init_opts(opts) when is_list(opts) do
+    quote do
+      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "init_opts")
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:init_opts, unquote(opts)})
+    end
+  end
+
+  # Macro being injected: [:on_enter, :on_leave, :new]
+  # macro_name &Module.function/0
+  # macro_name &Module.function/2
+  # macro_name do: Module.function()
+  # macro_name [user_state: state], do: Module.function(state)
+  # macro_name user_state: state, event: event do
   #   Module.function(state, event)
   # end
-  defmacro on_enter(opts_or_function, do_block \\ [])
+  for name <- [:on_enter, :on_leave, :new] do
+    defmacro unquote(name)(opts_or_function, do_block \\ [])
 
-  defmacro on_enter([do: block], []), do: EXSM.Macro._on_enter([], do: block)
+    defmacro unquote(name)([do: block], []) do
+      unquote({:., [], [
+        {:__aliases__, [alias: false], [:EXSM, :Macro]},
+        String.to_atom("_#{name}")
+      ]})([], do: block)
+    end
 
-  defmacro on_enter(opts, do: block) when is_list(opts), do: EXSM.Macro._on_enter(opts, do: block)
+    defmacro unquote(name)(opts, do: block) when is_list(opts) do
+      unquote({:., [], [
+        {:__aliases__, [alias: false], [:EXSM, :Macro]},
+        String.to_atom("_#{name}")
+      ]})(opts, do: block)
+    end
 
-  defmacro on_enter(function, []) when not is_list(function) do
-    quote do
-      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_enter")
+    defmacro unquote(name)(function, []) when not is_list(function) do
+      name = unquote(name)
+      quote do
+        EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "#{unquote(name)}")
 
-      EXSM.Util.assert_state_function(unquote(function), "on_enter")
+        EXSM.Util.assert_state_function(unquote(function), "#{unquote(name)}")
 
-      on_enter = EXSM.Util.function_to_arity_2(unquote(function), unquote(Macro.escape(function)))
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_enter, on_enter})
+        normalized_function = EXSM.Util.function_to_arity_2(unquote(function), unquote(Macro.escape(function)))
+        Module.put_attribute(__MODULE__, :current_state_keyword, {unquote(name), normalized_function})
+      end
+    end
+
+    def unquote(String.to_atom("_#{name}"))(opts, do: block) when is_list(opts) do
+      name = unquote(name)
+      EXSM.Util.assert_only_allowed_keywords(opts, [:user_state, :event], "#{name}")
+      user_state_ast = EXSM.Macro.function_param_from_opts(opts, :user_state)
+      event_ast = EXSM.Macro.function_param_from_opts(opts, :event)
+      function_ast = quote do
+        fn unquote(user_state_ast), unquote(event_ast) ->
+          unquote(block)
+        end
+      end
+
+      quote do
+        EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "#{unquote(name)}")
+
+        Module.put_attribute(__MODULE__, :current_state_keyword,
+          {unquote(name), unquote(Macro.escape(function_ast))}
+        )
+      end
     end
   end
 
-  def _on_enter(opts, do: block) when is_list(opts) do
-    EXSM.Util.assert_only_allowed_keywords(opts, [:user_state, :event], "on_enter")
+  # terminate &Module.function/0
+  # terminate &Module.function/3
+  # terminate do: Module.function()
+  # terminate [state_machine: state_machine], do: Module.terminate(state_machine)
+  # terminate state_machine: state_machine, user_state: state, event: event do
+  #   Module.function(state_machine, state, event)
+  # end
+  defmacro terminate(opts_or_function, do_block \\ [])
+
+  defmacro terminate([do: block], []), do: EXSM.Macro._terminate([], do: block)
+
+  defmacro terminate(opts, do: block) when is_list(opts), do: EXSM.Macro._terminate(opts, do: block)
+
+  defmacro terminate(function, []) when not is_list(function) do
+    quote do
+      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "terminate")
+
+      EXSM.Util.assert_state_function(unquote(function), "terminate")
+
+      terminate_fn = EXSM.Util.function_to_arity_3(unquote(function), unquote(Macro.escape(function)))
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:terminate, terminate_fn})
+    end
+  end
+
+  def _terminate(opts, do: block) when is_list(opts) do
+    EXSM.Util.assert_only_allowed_keywords(opts, [:state_machine, :user_state, :event], "terminate")
+    state_machine_ast = EXSM.Macro.function_param_from_opts(opts, :state_machine)
     user_state_ast = EXSM.Macro.function_param_from_opts(opts, :user_state)
     event_ast = EXSM.Macro.function_param_from_opts(opts, :event)
     function_ast = quote do
-      fn unquote(user_state_ast), unquote(event_ast) ->
+      fn unquote(state_machine_ast), unquote(user_state_ast), unquote(event_ast) ->
         unquote(block)
       end
     end
 
     quote do
-      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_enter")
+      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "terminate")
 
       Module.put_attribute(__MODULE__, :current_state_keyword,
-        {:on_enter, unquote(Macro.escape(function_ast))}
-      )
-    end
-  end
-
-  # on_leave &Module.function/0
-  # on_leave &Module.function/2
-  # on_leave do: Module.function()
-  # on_leave [user_state: state], do: Module.function(state)
-  # on_leave user_state: state, event: event do
-  #   Module.function(state, event)
-  # end
-  defmacro on_leave(opts_or_function, do_block \\ [])
-
-  defmacro on_leave([do: block], []), do: EXSM.Macro._on_leave([], do: block)
-
-  defmacro on_leave(opts, do: block) when is_list(opts), do: EXSM.Macro._on_leave(opts, do: block)
-
-  defmacro on_leave(function, []) when not is_list(function) do
-    quote do
-      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_leave")
-
-      EXSM.Util.assert_state_function(unquote(function), "on_leave")
-
-      on_leave = EXSM.Util.function_to_arity_2(unquote(function), unquote(Macro.escape(function)))
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:on_leave, on_leave})
-    end
-  end
-
-  def _on_leave(opts, do: block) when is_list(opts) do
-    EXSM.Util.assert_only_allowed_keywords(opts, [:user_state, :event], "on_leave")
-    user_state_ast = EXSM.Macro.function_param_from_opts(opts, :user_state)
-    event_ast = EXSM.Macro.function_param_from_opts(opts, :event)
-    function_ast = quote do
-      fn unquote(user_state_ast), unquote(event_ast) ->
-        unquote(block)
-      end
-    end
-
-    quote do
-      EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "on_leave")
-
-      Module.put_attribute(__MODULE__, :current_state_keyword,
-        {:on_leave, unquote(Macro.escape(function_ast))}
+        {:terminate, unquote(Macro.escape(function_ast))}
       )
     end
   end
