@@ -283,18 +283,52 @@ defmodule EXSM.Macro do
           end
 
           for %EXSM.Macro.State{state: %EXSM.State{} = state} = meta_state <- states_meta do
-            %EXSM.Macro.State{id: id, on_enter: on_enter, on_leave: on_leave} = meta_state
+            %EXSM.Macro.State{
+              state: %EXSM.State{sub_state_machine?: sub_machine?},
+              id: id,
+              on_enter: on_enter,
+              on_leave: on_leave,
+              sub_machine_module: sub_machine_module,
+              sub_machine_init_opts: sub_machine_init_opts,
+              sub_machine_new: sub_machine_new,
+              sub_machine_terminate: sub_machine_terminate
+            } = meta_state
 
             def unquote(id)(:state) do
               unquote(Macro.escape(state))
             end
 
-            def unquote(id)(:on_enter) do
-              unquote(on_enter)
-            end
+            if sub_machine? do
+              if sub_machine_new != nil do
+                def unquote(id)(:sub_machine_new) do
+                  fn user_state, event ->
+                    function = unquote(sub_machine_new)
+                    case function.(user_state, event) do
+                      {:ok, %EXSM.StateMachine{module: unquote(sub_machine_module)}} = result ->
+                        result
 
-            def unquote(id)(:on_leave) do
-              unquote(on_leave)
+                      {:error, _} = error ->
+                        error
+                    end
+                  end
+                end
+              else
+                def unquote(id)(:sub_machine_new) do
+                  EXSM.new(unquote(sub_machine_module), unquote(sub_machine_init_opts))
+                end
+              end
+
+              def unquote(id)(:sub_machine_terminate) do
+                unquote(sub_machine_terminate)
+              end
+            else
+              def unquote(id)(:on_enter) do
+                unquote(on_enter)
+              end
+
+              def unquote(id)(:on_leave) do
+                unquote(on_leave)
+              end
             end
           end
         end
@@ -371,17 +405,27 @@ defmodule EXSM.Macro do
   def state_from_keyword(name, keyword, seq_number, region) do
     assert_no_duplicate_keys(name, keyword, "State")
 
+    sub_machine? = Keyword.get(keyword, :sub_machine?, false)
+    assert_sub_machine_values(sub_machine?, keyword)
+    {sub_machine_init_opts, sub_machine_new} =
+      get_sub_machine_init(sub_machine?, keyword)
+
     %EXSM.Macro.State{
       state: %EXSM.State{
         name: name,
         description: Keyword.get(keyword, :description),
         initial?: Keyword.get(keyword, :initial?, false),
         terminal?: Keyword.get(keyword, :terminal?, false),
-        region: region
+        region: region,
+        sub_state_machine?: sub_machine?
       },
       id: make_state_id(name, seq_number),
       on_enter: Keyword.get(keyword, :on_enter),
-      on_leave: Keyword.get(keyword, :on_leave)
+      on_leave: Keyword.get(keyword, :on_leave),
+      sub_machine_module: Keyword.get(keyword, :module, name),
+      sub_machine_init_opts: sub_machine_init_opts,
+      sub_machine_new: sub_machine_new,
+      sub_machine_terminate: Keyword.get(keyword, :terminate)
     }
   end
 
@@ -678,6 +722,38 @@ defmodule EXSM.Macro do
       #{place} #{name} has duplicate attributes
       #{inspect(Enum.map(keyword, &elem(&1, 0)))}
       """
+    end
+  end
+
+  defp assert_only_keys(keyword, keys, place) do
+    forbidden_keys =
+      keyword
+      |> Keyword.keys()
+      |> MapSet.new()
+      |> MapSet.difference(MapSet.new(keys))
+      |> MapSet.to_list()
+
+    if length(forbidden_keys) > 0 do
+      raise "Values #{inspect(forbidden_keys)} are forbidden in #{place}"
+    end
+  end
+
+  defp assert_sub_machine_values(false, keyword) do
+    keys = [:sub_machine?, :description, :initial?, :terminal?, :on_enter, :on_leave]
+    assert_only_keys(keyword, keys, "State")
+  end
+
+  defp assert_sub_machine_values(true, keyword) do
+    keys = [:sub_machine?, :description, :initial?, :terminal?, :module, :new, :terminate, :init_opts]
+    assert_only_keys(keyword, keys, "Sub Machine")
+  end
+
+  defp get_sub_machine_init(false, _), do: {nil, nil}
+
+  defp get_sub_machine_init(true, keyword) do
+    case {Keyword.has_key?(keyword, :new), Keyword.has_key?(keyword, :init_opts)} do
+      {true, true} -> raise "Only one of [:new, :init_opts] is allowed in Sub Machine"
+      {_, _} -> {Keyword.get(keyword, :new), Keyword.get(keyword, :init_opts, [])}
     end
   end
 end
