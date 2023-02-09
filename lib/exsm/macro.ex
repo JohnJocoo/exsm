@@ -122,7 +122,7 @@ defmodule EXSM.Macro do
   defmacro init_opts(opts) when is_list(opts) do
     quote do
       EXSM.Macro.assert_in_block(__MODULE__, :current_state_keyword, "state", "init_opts")
-      Module.put_attribute(__MODULE__, :current_state_keyword, {:init_opts, unquote(opts)})
+      Module.put_attribute(__MODULE__, :current_state_keyword, {:init_opts, unquote(Elixir.Macro.escape(opts))})
     end
   end
 
@@ -307,6 +307,9 @@ defmodule EXSM.Macro do
                       {:ok, %EXSM.StateMachine{module: unquote(sub_machine_module)}} = result ->
                         result
 
+                      {:ok, %EXSM.StateMachine{module: unquote(sub_machine_module)}, _} = result ->
+                        result
+
                       {:error, _} = error ->
                         error
                     end
@@ -314,7 +317,9 @@ defmodule EXSM.Macro do
                 end
               else
                 def unquote(id)(:sub_machine_new) do
-                  EXSM.new(unquote(sub_machine_module), unquote(sub_machine_init_opts))
+                  fn _, _ ->
+                    EXSM.new(unquote(sub_machine_module), unquote(sub_machine_init_opts))
+                  end
                 end
               end
 
@@ -407,7 +412,7 @@ defmodule EXSM.Macro do
 
     sub_machine? = Keyword.get(keyword, :sub_machine?, false)
     assert_sub_machine_values(sub_machine?, keyword)
-    {sub_machine_init_opts, sub_machine_new} =
+    {sub_machine_new, sub_machine_init_opts} =
       get_sub_machine_init(sub_machine?, keyword)
 
     %EXSM.Macro.State{

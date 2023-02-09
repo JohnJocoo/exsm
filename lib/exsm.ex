@@ -96,8 +96,15 @@ defmodule EXSM do
     user_state = EXSM.StateMachine.user_state(state_machine)
     regions = EXSM.StateMachine.regions(state_machine)
     case enter_all_states(module, initial_states, user_state, regions) do
-      {:ok, updated_user_state} ->
-        {:ok, EXSM.StateMachine.update_user_state(state_machine, updated_user_state)}
+      {:ok, updated_states, updated_user_state} ->
+        updated_state_machine =
+          Enum.reduce(updated_states, state_machine,
+            fn {state_id, %EXSM.State{region: region} = state}, state_machine ->
+              EXSM.StateMachine.update_current_state(state_machine, {state_id, state}, region)
+            end
+          )
+          |> EXSM.StateMachine.update_user_state(updated_user_state)
+        {:ok, updated_state_machine}
 
       {:error, _} = error ->
         error
@@ -171,17 +178,16 @@ defmodule EXSM do
 
   defp enter_all_states(module, initial_states, user_state, regions) do
     region_state_ids =
-      Map.new(initial_states, fn {id, %EXSM.State{region: region}} ->
-        {region, id}
+      Map.new(initial_states, fn {id, %EXSM.State{region: region} = state} ->
+        {region, {id, state}}
       end)
     Enum.map(regions, fn %EXSM.Region{name: region} -> region end)
-    |> Enum.reduce_while({[], user_state}, fn region, {entered_states, acc_user_state} ->
-      state_id = Map.fetch!(region_state_ids, region)
+    |> Enum.reduce_while({[], [], user_state}, fn region, {entered_states, updated_states, acc_user_state} ->
+      {state_id, state} = Map.fetch!(region_state_ids, region)
       try do
-        on_enter = EXSM.Util.on_enter_by_id(module, state_id)
-        case EXSM.Util.enter_state(on_enter, acc_user_state) do
-          {:noreply, updated_user_state} ->
-            {:cont, {[state_id | entered_states], updated_user_state}}
+        case enter_state_or_sub(module, state_id, state, acc_user_state, nil) do
+          {:ok, state, updated_user_state} ->
+            {:cont, {[state_id | entered_states], [{state_id, state} | updated_states], updated_user_state}}
 
           {:error, _} = error ->
             unroll_states(module, entered_states, acc_user_state, true)
@@ -197,8 +203,8 @@ defmodule EXSM do
       {:error, _} = error ->
         error
 
-      {ids, new_user_state} when is_list(ids) ->
-        {:ok, new_user_state}
+      {ids, updated_states, new_user_state} when is_list(ids) ->
+        {:ok, updated_states, new_user_state}
     end)
   end
 
@@ -335,10 +341,9 @@ defmodule EXSM do
   end
 
   defp enter_state_normal(module, state_machine, event, region, from, {_, to_id}, user_state) do
-    on_enter = EXSM.Util.on_enter_by_id(module, to_id)
-    case EXSM.Util.enter_state(on_enter, user_state, event) do
-      {:noreply, updated_user_state} ->
-        new_state = EXSM.Util.state_by_id(module, to_id)
+    state = EXSM.Util.state_by_id(module, to_id)
+    case enter_state_or_sub(module, to_id, state, user_state, event) do
+      {:ok, new_state, updated_user_state} ->
         update_state_machine =
           state_machine
           |> EXSM.StateMachine.update_user_state(updated_user_state)
@@ -357,10 +362,9 @@ defmodule EXSM do
   end
 
   defp enter_state_rollback(module, state_machine, _event, region, {_, state_id}, user_state) do
-    on_enter = EXSM.Util.on_enter_by_id(module, state_id)
-    case EXSM.Util.enter_state(on_enter, user_state, nil) do
-      {:noreply, updated_user_state} ->
-        new_state = EXSM.Util.state_by_id(module, state_id)
+    state = EXSM.Util.state_by_id(module, state_id)
+    case enter_state_or_sub(module, state_id, state, user_state, nil) do
+      {:ok, new_state, updated_user_state} ->
         update_state_machine =
           state_machine
           |> EXSM.StateMachine.update_user_state(updated_user_state)
@@ -404,6 +408,24 @@ defmodule EXSM do
       default_user_state.()
     else
       default_user_state
+    end
+  end
+
+  defp enter_state_or_sub(module, id, %EXSM.State{sub_state_machine?: false} = state, user_state, event) do
+    on_enter = EXSM.Util.on_enter_by_id(module, id)
+    case EXSM.Util.enter_state(on_enter, user_state, event) do
+      {:noreply, updated_user_state} -> {:ok, state, updated_user_state}
+      {:error, _} = error -> error
+    end
+  end
+
+  defp enter_state_or_sub(module, id, %EXSM.State{sub_state_machine?: true} = state, user_state, event) do
+    new_sub = EXSM.Util.sub_machine_new_by_id(module, id)
+    case EXSM.Util.new_sub_machine(new_sub, user_state, event) do
+      {:ok, state_machine, new_user_state} ->
+        {:ok, %EXSM.State{state | _sub_state_machine: state_machine}, new_user_state}
+      {:error, _} = error ->
+        error
     end
   end
 end

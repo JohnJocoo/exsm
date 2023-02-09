@@ -54,25 +54,25 @@ defmodule EXSM.SubMachineTest do
   end
 
   test "sub machine as initial state" do
-    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(SimpleMachine, initial_states: [SimpleSubMachine])
-    %EXSM.State{
+    {:ok, %StateMachine{} = state_machine} = EXSM.new(SimpleMachine, initial_states: [SimpleSubMachine])
+    %State{
       name: SimpleSubMachine,
       sub_state_machine?: true
-    } = current_state = EXSM.StateMachine.current_state(state_machine)
-    {:ok, %EXSM.StateMachine{module: SimpleSubMachine} = sub_machine} = EXSM.State.sub_state_machine(current_state)
-    assert %EXSM.State{name: :one} == EXSM.StateMachine.current_state(sub_machine)
+    } = current_state = StateMachine.current_state(state_machine)
+    {:ok, %StateMachine{module: SimpleSubMachine} = sub_machine} = State.sub_state_machine(current_state)
+    assert %State{name: :one, initial?: true} == StateMachine.current_state(sub_machine)
   end
 
   test "normal state move to sub machine state" do
-    {:ok, %EXSM.StateMachine{} = state_machine} = EXSM.new(SimpleMachine)
-    assert %EXSM.State{name: :initial, initial?: true} == EXSM.StateMachine.current_state(state_machine)
-    {:ok, %EXSM.StateMachine{} = updated_state_machine, []} =
+    {:ok, %StateMachine{} = state_machine} = EXSM.new(SimpleMachine)
+    assert %State{name: :initial, initial?: true} == StateMachine.current_state(state_machine)
+    {:ok, %StateMachine{} = updated_state_machine, []} =
       EXSM.process_event(SimpleMachine, state_machine, :to_sub_machine)
-    %EXSM.State{
+    %State{
       name: SimpleSubMachine,
       sub_state_machine?: true
-    } = current_state = EXSM.StateMachine.current_state(state_machine)
-    {:ok, %EXSM.StateMachine{module: SimpleSubMachine} = sub_machine} = EXSM.State.sub_state_machine(current_state)
-    assert %EXSM.State{name: :one} == EXSM.StateMachine.current_state(sub_machine)
+    } = current_state = StateMachine.current_state(updated_state_machine)
+    {:ok, %StateMachine{module: SimpleSubMachine} = sub_machine} = State.sub_state_machine(current_state)
+    assert %State{name: :one, initial?: true} == StateMachine.current_state(sub_machine)
   end
 end

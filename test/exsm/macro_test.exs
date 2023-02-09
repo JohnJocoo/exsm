@@ -1,6 +1,8 @@
 defmodule EXSM.MacroTest do
   use ExUnit.Case, async: true
 
+  require EXSM.Macro
+
   test "defines state" do
     assert macro_exported?(EXSM.Macro, :state, 1)
     assert macro_exported?(EXSM.Macro, :state, 2)

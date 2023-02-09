@@ -32,7 +32,11 @@ defmodule EXSM.Util do
                                 action_callback() | nil}
                              } |
                              {:no_transition, :ignore | :reply | :error}
-  @type sub_machine_new_result :: {:ok, EXSM.StateMachine.t()} | {:error, any()}
+  @type sub_machine_new_result :: {:ok, EXSM.StateMachine.t()} |
+                                  {:ok, EXSM.StateMachine.t(), EXSM.State.user_state()} |
+                                  {:error, any()}
+  @type sub_machine_new_result_mapped :: {:ok, EXSM.StateMachine.t(), EXSM.State.user_state()} |
+                                         {:error, any()}
   @type sub_machine_terminate_result :: :ok | {:error, [{EXSM.StateMachine.region(), any()}]}
   @type sub_machine_new_callback :: (EXSM.State.user_state(), event() -> sub_machine_new_result())
   @type sub_machine_terminate_callback :: (EXSM.StateMachine.t(), EXSM.State.user_state(), event() ->
@@ -204,9 +208,13 @@ defmodule EXSM.Util do
   end
 
   @spec new_sub_machine(sub_machine_new_callback(), EXSM.State.user_state(), event() | nil)
-        :: sub_machine_new_result()
+        :: sub_machine_new_result_mapped()
   def new_sub_machine(new_function, user_state, event \\ nil) do
-    new_function.(user_state, event)
+    case new_function.(user_state, event) do
+      {:ok, state_machine} -> {:ok, state_machine, user_state}
+      {:ok, state_machine, new_user_state} -> {:ok, state_machine, new_user_state}
+      {:error, _} = error -> error
+    end
   end
 
   @spec terminate_sub_machine(

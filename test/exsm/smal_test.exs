@@ -1,7 +1,7 @@
 defmodule EXSM.SMALTest do
   use ExUnit.Case, async: true
 
-  doctest EXSM.SMAL
+  require EXSM.SMAL
 
   test "defines __using__" do
     assert macro_exported?(EXSM.SMAL, :__using__, 1)
