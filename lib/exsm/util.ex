@@ -37,7 +37,11 @@ defmodule EXSM.Util do
                                   {:error, any()}
   @type sub_machine_new_result_mapped :: {:ok, EXSM.StateMachine.t(), EXSM.State.user_state()} |
                                          {:error, any()}
-  @type sub_machine_terminate_result :: :ok | {:error, [{EXSM.StateMachine.region(), any()}]}
+  @type sub_machine_terminate_result :: :ok |
+                                        {:ok, EXSM.State.user_state()} |
+                                        {:error, [{EXSM.StateMachine.region(), any()}]}
+  @type sub_machine_terminate_result_mapped :: {:ok, EXSM.State.user_state()} |
+                                               {:error, [{EXSM.StateMachine.region(), any()}]}
   @type sub_machine_new_callback :: (EXSM.State.user_state(), event() -> sub_machine_new_result())
   @type sub_machine_terminate_callback :: (EXSM.StateMachine.t(), EXSM.State.user_state(), event() ->
                                            sub_machine_terminate_result())
@@ -209,7 +213,7 @@ defmodule EXSM.Util do
 
   @spec new_sub_machine(sub_machine_new_callback(), EXSM.State.user_state(), event() | nil)
         :: sub_machine_new_result_mapped()
-  def new_sub_machine(new_function, user_state, event \\ nil) do
+  def new_sub_machine(new_function, user_state, event \\ nil) when new_function != nil do
     case new_function.(user_state, event) do
       {:ok, state_machine} -> {:ok, state_machine, user_state}
       {:ok, state_machine, new_user_state} -> {:ok, state_machine, new_user_state}
@@ -220,16 +224,24 @@ defmodule EXSM.Util do
   @spec terminate_sub_machine(
           sub_machine_terminate_callback() | nil,
           EXSM.StateMachine.t(),
-          EXSM.State.user_state(), event() | nil
+          EXSM.State.user_state(),
+          event() | nil
         ) :: sub_machine_terminate_result()
   def terminate_sub_machine(terminate_function, state_machine, user_state, event \\ nil)
 
-  def terminate_sub_machine(nil, %EXSM.StateMachine{module: module} = state_machine, _, _) do
-    EXSM.terminate(module, state_machine)
+  def terminate_sub_machine(nil, %EXSM.StateMachine{module: module} = state_machine, user_state, _) do
+    case EXSM.terminate(module, state_machine) do
+      :ok -> {:ok, user_state}
+      {:error, errors} -> {:error, {:terminate, errors}}
+    end
   end
 
   def terminate_sub_machine(terminate_function, state_machine, user_state, event) do
-    terminate_function.(state_machine, user_state, event)
+    case terminate_function.(state_machine, user_state, event) do
+      :ok -> {:ok, user_state}
+      {:ok, new_user_state} -> {:ok, new_user_state}
+      {:error, _} = error -> error
+    end
   end
 
   defp function_arity_0_or_2(function) do

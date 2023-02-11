@@ -38,7 +38,7 @@ defmodule EXSM.SubMachineTest do
       sub_machine true
       module SimpleSubMachine
       new [user_state: %{token: token}, event: event] do
-        SimpleSubMachine.new(initial_states: [:two], user_state: %{token: token, event: event})
+        SimpleSubMachine.new(initial_states: [:three], user_state: %{token: token, event: event})
       end
       terminate [state_machine: state_machine] do
         SimpleSubMachine.terminate(state_machine)
@@ -61,6 +61,7 @@ defmodule EXSM.SubMachineTest do
     } = current_state = StateMachine.current_state(state_machine)
     {:ok, %StateMachine{module: SimpleSubMachine} = sub_machine} = State.sub_state_machine(current_state)
     assert %State{name: :one, initial?: true} == StateMachine.current_state(sub_machine)
+    assert %{data: "hello"} == StateMachine.user_state(sub_machine)
   end
 
   test "normal state move to sub machine state" do
@@ -74,5 +75,31 @@ defmodule EXSM.SubMachineTest do
     } = current_state = StateMachine.current_state(updated_state_machine)
     {:ok, %StateMachine{module: SimpleSubMachine} = sub_machine} = State.sub_state_machine(current_state)
     assert %State{name: :one, initial?: true} == StateMachine.current_state(sub_machine)
+    assert %{data: "hello"} == StateMachine.user_state(sub_machine)
+  end
+
+  test "leave sub machine state" do
+    {:ok, %StateMachine{} = state_machine} = EXSM.new(SimpleMachine, initial_states: [:sub_machine_custom])
+    %State{
+      name: :sub_machine_custom,
+      sub_state_machine?: true
+    } = StateMachine.current_state(state_machine)
+    {:ok, %StateMachine{} = updated_state_machine, []} =
+      EXSM.process_event(SimpleMachine, state_machine, :increment)
+    assert %State{name: :final, terminal?: true} == StateMachine.current_state(updated_state_machine)
+    assert :ok == EXSM.terminate(SimpleMachine, updated_state_machine)
+  end
+
+  test "terminating with sub machine state" do
+    {:ok, %StateMachine{} = state_machine} = EXSM.new(SimpleMachine, initial_states: [SimpleSubMachine])
+    %State{
+      name: SimpleSubMachine,
+      sub_state_machine?: true
+    } = StateMachine.current_state(state_machine)
+    assert :ok == EXSM.terminate(SimpleMachine, state_machine)
+  end
+
+  test "test events processing order with sub machine" do
+
   end
 end
