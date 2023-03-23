@@ -9,12 +9,12 @@ defmodule EXSM do
                                    {:initial_states, [EXSM.State.name()]} |
                                    {:regions, [atom()]}] |
                                   []
-  @type reply :: any()
+  @type replies :: [any()]
   @type ok_details :: [{:region, atom()}] | []
   @type error_details :: [{:rollback_error, any()} |
                           {:region, atom()} |
                           {:state_machine, EXSM.StateMachine.t()} |
-                          {:reply, reply()}
+                          {:reply, any()}
                          ] | []
 
   @spec states(module()) :: [EXSM.State.t()]
@@ -32,7 +32,7 @@ defmodule EXSM do
 
   @spec process_event(module(), EXSM.StateMachine.t(), EXSM.Util.event()) ::
           {:ok, EXSM.StateMachine.t(), ok_details()} |
-          {:ok, EXSM.StateMachine.t(), :no_transition | reply(), ok_details()} |
+          {:ok, EXSM.StateMachine.t(), :no_transition | replies(), ok_details()} |
           {:error, :no_transition | any(), error_details()}
   def process_event(module, state_machine, event) when is_atom(module) do
     handle_event(module, state_machine, event)
@@ -247,128 +247,107 @@ defmodule EXSM do
   end
 
   defp handle_event_active(module, %EXSM.StateMachine{module: module} = state_machine, event) do
-    case find_transition_info(module, state_machine, event) do
-      {:transition, region, {from, to, action}} ->
-        transit_state(module, state_machine, event, region, from, to, action)
+    original_user_state = EXSM.StateMachine.user_state(state_machine)
+    state_machine
+    |> EXSM.StateMachine.regions()
+    |> Enum.map(fn %EXSM.Region{name: region_name} = region ->
+        %EXSM.State{name: from_name} = from = EXSM.StateMachine.current_state(state_machine, region_name)
+          case EXSM.Util.transition_info(module, from_name, event, original_user_state) do
+            {:transition, {{^from_name, from_id}, to, action}} ->
+              {:transition, region, {from, from_id}, to, action}
 
-      {:no_transition, :ignore} ->
-        {:ok, state_machine, []}
-
-      {:no_transition, :reply} ->
-        {:ok, state_machine, :no_transition, []}
-
-      {:no_transition, :error} ->
-        {:error, :no_transition, [state_machine: state_machine]}
-    end
-  end
-
-  defp find_transition_info(module, state_machine, event) do
-    user_state = EXSM.StateMachine.user_state(state_machine)
-    EXSM.StateMachine.regions(state_machine)
-    |> Enum.reduce_while(nil, fn %EXSM.Region{name: region}, _ ->
-      %EXSM.State{name: from} = EXSM.StateMachine.current_state(state_machine, region)
-      case EXSM.Util.transition_info(module, from, event, user_state) do
-        {:transition, transition} ->
-          {:halt, {:transition, region, transition}}
-
-        {:no_transition, _} = no_transition ->
-          {:cont, no_transition}
-      end
-    end)
+            {:no_transition, _} ->
+              :no_transition
+          end
+       end)
+    |> Enum.reject(&(&1 == :no_transition))
+    |> Enum.reduce_while(
+         {[], [], original_user_state},
+         fn {:transition, %EXSM.Region{name: region_name} = region, from, to, action}, {results, details, user_state} ->
+           transit_state(module, event, region, from, to, user_state, action)
+         end
+       )
   end
 
   # from == to is a config for internal transition
   # action is run without leaving old state and entering new one
-  defp transit_state(_module, state_machine, _event, region, same_state, same_state, action) do
-    user_state = EXSM.StateMachine.user_state(state_machine)
+  defp transit_state(_module, _event, region, {from, same_id}, {_, same_id}, user_state, action) do
     case EXSM.Util.handle_action(action, user_state) do
       {:noreply, updated_user_state} ->
-        updated_state_machine = EXSM.StateMachine.update_user_state(state_machine, updated_user_state)
-        {:ok, updated_state_machine, add_detail_not_nil([], :region, region)}
+        {:ok, from, updated_user_state, []}
 
       {:reply, reply, updated_user_state} ->
-        updated_state_machine = EXSM.StateMachine.update_user_state(state_machine, updated_user_state)
-        {:ok, updated_state_machine, reply, add_detail_not_nil([], :region, region)}
+        {:ok, from, updated_user_state, reply, []}
 
       {:error, error} ->
-        {:error, error, add_detail_not_nil([state_machine: state_machine], :region, region)}
+        {:error, error, []}
     end
   end
 
   # leave from_state -> run action -> enter to_state
   # if error happens rollback will occur,
   # ex. leave from_state -> run action 💥 (error happened) -> enter from_state (rollback)
-  defp transit_state(module, state_machine, event, region, {_, from_id} = from, to, action) do
-    user_state = EXSM.StateMachine.user_state(state_machine)
-    state = EXSM.StateMachine.current_state(state_machine, region)
-    case leave_state_or_sub(module, from_id, state, user_state, event) do
+  defp transit_state(module, event, region, {from, from_id}, to, user_state, action) do
+    case leave_state_or_sub(module, from_id, from, user_state, event) do
       {:ok, _updated_state, updated_user_state} ->
-        run_action_and_enter(module, state_machine, event, region, from, to, action, updated_user_state)
+        run_action_and_enter(module, event, region, from, to, action, updated_user_state)
 
       {:error, error} ->
-        {:error, error, add_detail_not_nil([state_machine: state_machine], :region, region)}
+        {:error, error, []}
     end
   end
 
-  defp run_action_and_enter(module, state_machine, event, region, from, to, action, user_state) do
+  defp run_action_and_enter(module, event, region, from, to, action, user_state) do
     case EXSM.Util.handle_action(action, user_state) do
       {:noreply, updated_user_state} ->
-        case enter_state_normal(module, state_machine, event, region, from, to, updated_user_state) do
-          {:ok, state_machine} ->
-            {:ok, state_machine, add_detail_not_nil([], :region, region)}
+        case enter_state_normal(module, event, region, from, to, updated_user_state) do
+          {:ok, new_state, updated_user_state} ->
+            {:ok, new_state, updated_user_state, []}
 
           {:error, _, _} = error ->
             error
         end
       {:reply, reply, updated_user_state} ->
-        case enter_state_normal(module, state_machine, event, region, from, to, updated_user_state) do
-          {:ok, state_machine} ->
-            {:ok, state_machine, reply, add_detail_not_nil([], :region, region)}
+        case enter_state_normal(module, event, region, from, to, updated_user_state) do
+          {:ok, new_state, updated_user_state} ->
+            {:ok, new_state, updated_user_state, reply, []}
 
           {:error, error, details} ->
             {:error, error, [{:reply, reply} | details]}
         end
       {:error, error} ->
-        case enter_state_rollback(module, state_machine, event, region, from, user_state) do
-          {:ok, state_machine} ->
-            {:error, error, add_detail_not_nil([state_machine: state_machine], :region, region)}
+        case enter_state_rollback(module, event, region, from, user_state) do
+          {:ok, new_state, updated_user_state} ->
+            {:error, error, [{:state, new_state}, {:user_state, updated_user_state}]}
 
           {:error, rollback_error} ->
-            {:error, error, add_detail_not_nil([rollback_error: rollback_error], :region, region)}
+            {:error, error, [{:rollback_error, rollback_error}]}
         end
     end
   end
 
-  defp enter_state_normal(module, state_machine, event, region, from, {_, to_id}, user_state) do
+  defp enter_state_normal(module, event, region, from, {_, to_id}, user_state) do
     state = EXSM.Util.state_by_id(module, to_id)
     case enter_state_or_sub(module, to_id, state, user_state, event) do
       {:ok, new_state, updated_user_state} ->
-        update_state_machine =
-          state_machine
-          |> EXSM.StateMachine.update_user_state(updated_user_state)
-          |> EXSM.StateMachine.update_current_state({to_id, new_state}, region)
-        {:ok, update_state_machine}
+        {:ok, new_state, updated_user_state}
 
       {:error, error} ->
-        case enter_state_rollback(module, state_machine, event, region, from, user_state) do
-          {:ok, state_machine} ->
-            {:error, error, add_detail_not_nil([state_machine: state_machine], :region, region)}
+        case enter_state_rollback(module, event, region, from, user_state) do
+          {:ok, new_state, updated_user_state} ->
+            {:error, error, [{:state, new_state}, {:user_state, updated_user_state}]}
 
           {:error, rollback_error} ->
-            {:error, error, add_detail_not_nil([rollback_error: rollback_error], :region, region)}
+            {:error, error, [{:rollback_error, rollback_error}]}
         end
     end
   end
 
-  defp enter_state_rollback(module, state_machine, _event, region, {_, state_id}, user_state) do
+  defp enter_state_rollback(module, _event, region, {_, state_id}, user_state) do
     state = EXSM.Util.state_by_id(module, state_id)
     case enter_state_or_sub(module, state_id, state, user_state) do
       {:ok, new_state, updated_user_state} ->
-        update_state_machine =
-          state_machine
-          |> EXSM.StateMachine.update_user_state(updated_user_state)
-          |> EXSM.StateMachine.update_current_state({state_id, new_state}, region)
-        {:ok, update_state_machine}
+        {:ok, new_state, updated_user_state}
 
       {:error, _} = error ->
         error
